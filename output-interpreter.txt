@@ -1,0 +1,75 @@
+/Users/jed/code/interview/pyenv/bin/python3 /Users/jed/code/interview/robots-interpreter.py 
+== Entering room: TEST_ROOM_1.txt
+Inserted robot 0 at (0, 0), direction (1, 0)
+Begin execution.
+Robot 0 exited. Grid now:
+E       v
+  >  @   
+  ^     <
+Received 0 from robot 0.
+== Done with TEST_ROOM_1.txt in 0.0577ms
+
+
+== Entering room: TEST_ROOM_2.txt
+Inserted robot 0 at (0, 0), direction (1, 0)
+Begin execution.
+Robot 0 exited. Grid now:
+E8      v
+  >  @  5
+  ^ -1 -<
+Received 2 from robot 0.
+== Done with TEST_ROOM_2.txt in 0.0503ms
+
+
+== Entering room: TEST_ROOM_3.txt
+Inserted robot 0 at (0, 0), direction (1, 0)
+Begin execution.
+Robot 0 exited. Grid now:
+E05 > : 1- : v   v *  _ ! @
+    ^        _ ! > $: ^    
+Received 120 from robot 0.
+== Done with TEST_ROOM_3.txt in 0.0997ms
+
+
+== Entering room: TEST_ROOM_4.txt
+Inserted robot 0 at (7, 2), direction (0, 1)
+Inserted robot 1 at (0, 8), direction (1, 0)
+Begin execution.
+Robot 1 exited. Grid now:
+11010000                      
+00000010                      
+       S<                     
+00000001                      
+      v_^                                             
+      >    0 0310#        v   
+ @ + * **488 ?0110 ?0100  <   
+                                                      
+E06 > : 1- : v   v *  _ ! v   
+    ^        _ ! > $: ^   :                           
+                                                      
+v # 0110 / * * 4 8 8 :    <   
+> : 8 8 4 * * % 0010 #    v   
+@ 0           # 0130 1    <   
+Received 0 from robot 1.
+Robot 0 exited. Grid now:
+11010000                      
+00000010                      
+       S<                     
+00000000                      
+      v_^                                             
+      >    0 0310#        v   
+ @ + * **488 ?0110 ?0100  <   
+                                                      
+E06 > : 1- : v   v *  _ ! v   
+    ^        _ ! > $: ^   :                           
+                                                      
+v # 0110 / * * 4 8 8 :    <   
+> : 8 8 4 * * % 0010 #    v   
+@ 0           # 0130 1    <   
+Received 720 from robot 0.
+== Done with TEST_ROOM_4.txt in 0.7183ms
+
+
+
+Process finished with exit code 0
+

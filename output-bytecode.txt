@@ -1,0 +1,335 @@
+/Users/jed/code/interview/pyenv/bin/python3 /Users/jed/code/interview/robots-bytecode.py 
+== Compiling TEST_ROOM_1.txt
+	:magic
+0000	74
+0001	69
+0002	68
+0003	63
+	:version
+0004	01
+0005	00
+	:memory length (int16)
+0006	00
+0007	1b
+	:memory stride
+0008	09
+	:data segment offset
+0009	0d
+	:entry points
+000a	01
+	:entry point offsets
+000b	0c
+
+	:code
+000c	[00] HALT
+
+	:data
+
+== Executing bytecode for TEST_ROOM_1.txt
+Loaded 13 bytes: 74 69 68 63 1 0 0 27 9 13 1 12 0
+VM Starting. Processes: 1.
+[proc0] 000c Halt after 1 ticks.
+== Done with TEST_ROOM_1.txt in 0.0094ms
+
+
+== Compiling TEST_ROOM_2.txt
+	:magic
+0000	74
+0001	69
+0002	68
+0003	63
+	:version
+0004	01
+0005	00
+	:memory length (int16)
+0006	00
+0007	1b
+	:memory stride
+0008	09
+	:data segment offset
+0009	12
+	:entry points
+  
+000a	01
+	:entry point offsets
+000b	0c
+
+	:code
+000c	[80] PUSH @00
+000d	[81] PUSH @01
+000e	[30] SUB
+000f	[82] PUSH @02
+0010	[30] SUB
+0011	[00] HALT
+
+	:data
+0012	0001 = 08
+0015	0011 = 05
+0018	0017 = 01
+
+== Executing bytecode for TEST_ROOM_2.txt
+Loaded 27 bytes: 74 69 68 63 1 0 0 27 9 18 1 12 128 129 48 130 48 0 0 1 8 0 17 5 0 23 1
+VM Starting. Processes: 1.
+[proc0] 0011 Halt after 6 ticks.
+[proc0] Stack top: 2
+== Done with TEST_ROOM_2.txt in 0.0233ms
+
+
+== Compiling TEST_ROOM_3.txt
+	:magic
+0000	74
+0001	69
+0002	68
+0003	63
+	:version
+0004	01
+0005	00
+	:memory length (int16)
+0006	00
+0007	36
+	:memory stride
+0008	1b
+	:data segment offset
+0009	30
+	:entry points
+000a	01
+	:entry point offsets
+000b	0c
+
+	:code
+000c	[80] PUSH @00
+000d	[81] PUSH @01
+000f	[4f] JUMP 10
+0010	[3a] DUP
+0011	[82] PUSH @02
+0012	[30] SUB
+0013	[3a] DUP
+0015	[4f] JUMP 16
+0017	[5f] JZ 1e
+0019	[4f] JUMP 1a
+001b	[4f] JUMP 1c
+001d	[4f] JUMP 10
+001e	[38] POP
+0020	[4f] JUMP 21
+0021	[39] SWAP
+0022	[3a] DUP
+0024	[4f] JUMP 25
+0026	[5f] JZ 2e
+0028	[4f] JUMP 29
+0029	[32] MUL
+002b	[4f] JUMP 2c
+002d	[4f] JUMP 21
+002e	[38] POP
+002f	[00] HALT
+
+	:data
+0030	0001 = 00
+0033	0002 = 05
+0036	0008 = 01
+
+== Executing bytecode for TEST_ROOM_3.txt
+Loaded 57 bytes: 74 69 68 63 1 0 0 54 27 48 1 12 128 129 79 16 58 130 48 58 79 22 95 30 79 26 79 28 79 16 56 79 33 57 58 79 37 95 46 79 41 50 79 44 79 33 56 0 0 1 0 0 2 5 0 8 1
+VM Starting. Processes: 1.
+[proc0] 002f Halt after 85 ticks.
+[proc0] Stack top: 120
+== Done with TEST_ROOM_3.txt in 0.0764ms
+
+
+== Compiling TEST_ROOM_4.txt
+	:magic
+0000	74
+0001	69
+0002	68
+0003	63
+	:version
+0004	01
+0005	00
+	:memory length (int16)
+0006	03
+0007	02
+	:memory stride
+0008	37
+	:data segment offset
+0009	88
+	:entry points
+000a	02
+	:entry point offsets
+000b	5d
+000c	0d
+
+	:code
+000d	[a8] PUSH @28
+000e	[a9] PUSH @29
+0010	[4f] JUMP 11
+0011	[3a] DUP
+0012	[aa] PUSH @2a
+0013	[30] SUB
+0014	[3a] DUP
+0016	[4f] JUMP 17
+0018	[5f] JZ 1f
+001a	[4f] JUMP 1b
+001c	[4f] JUMP 1d
+001e	[4f] JUMP 11
+001f	[38] POP
+0021	[4f] JUMP 22
+0022	[39] SWAP
+0023	[3a] DUP
+0025	[4f] JUMP 26
+0027	[5f] JZ 2f
+0029	[4f] JUMP 2a
+002a	[32] MUL
+002c	[4f] JUMP 2d
+002e	[4f] JUMP 22
+002f	[38] POP
+0031	[4f] JUMP 32
+0032	[3a] DUP
+0034	[4f] JUMP 35
+0035	[3a] DUP
+0036	[b1] PUSH @31
+0037	[b0] PUSH @30
+0038	[af] PUSH @2f
+0039	[32] MUL
+003a	[32] MUL
+003b	[33] DIV
+003c	[ae] PUSH @2e
+003d	[ad] PUSH @2d
+003e	[ac] PUSH @2c
+003f	[ab] PUSH @2b
+0040	[20] STORE
+0042	[4f] JUMP 43
+0044	[4f] JUMP 45
+0045	[3a] DUP
+0046	[b2] PUSH @32
+0047	[b3] PUSH @33
+0048	[b4] PUSH @34
+0049	[32] MUL
+004a	[32] MUL
+004b	[34] MOD
+004c	[b5] PUSH @35
+004d	[b6] PUSH @36
+004e	[b7] PUSH @37
+004f	[b8] PUSH @38
+0050	[20] STORE
+0052	[4f] JUMP 53
+0054	[4f] JUMP 55
+0055	[be] PUSH @3e
+0056	[bd] PUSH @3d
+0057	[bc] PUSH @3c
+0058	[bb] PUSH @3b
+0059	[ba] PUSH @3a
+005a	[20] STORE
+005b	[b9] PUSH @39
+005c	[00] HALT
+005d	[97] PUSH @17
+005f	[5f] JZ 82
+0061	[4f] JUMP 62
+0063	[4f] JUMP 64
+0065	[4f] JUMP 66
+0066	[98] PUSH @18
+0067	[99] PUSH @19
+0068	[9a] PUSH @1a
+0069	[9b] PUSH @1b
+006a	[9c] PUSH @1c
+006b	[20] STORE
+006d	[4f] JUMP 6e
+006f	[4f] JUMP 70
+0070	[a7] PUSH @27
+0071	[a6] PUSH @26
+0072	[a5] PUSH @25
+0073	[a4] PUSH @24
+0074	[10] LOAD
+0075	[a3] PUSH @23
+0076	[a2] PUSH @22
+0077	[a1] PUSH @21
+0078	[a0] PUSH @20
+0079	[10] LOAD
+007a	[9f] PUSH @1f
+007b	[9e] PUSH @1e
+007c	[9d] PUSH @1d
+007d	[32] MUL
+007e	[32] MUL
+007f	[32] MUL
+0080	[31] ADD
+0081	[00] HALT
+0083	[4f] JUMP 84
+0085	[4f] JUMP 86
+0087	[4f] JUMP 5d
+
+	:data
+0088	0000 = 00
+008b	0001 = 00
+008e	0002 = 00
+0091	0003 = 00
+0094	0004 = 00
+0097	0005 = 00
+009a	0006 = 00
+009d	0007 = 00
+00a0	0037 = 00
+00a3	0038 = 00
+00a6	0039 = 00
+00a9	003a = 00
+00ac	003b = 00
+00af	003c = 00
+00b2	003d = 00
+00b5	003e = 00
+00b8	00a5 = 00
+00bb	00a6 = 00
+00be	00a7 = 00
+00c1	00a8 = 00
+00c4	00a9 = 00
+00c7	00aa = 00
+00ca	00ab = 00
+00cd	00ac = 00
+00d0	011e = 00
+00d3	0120 = 00
+00d6	0121 = 03
+00d9	0122 = 01
+00dc	0123 = 00
+00df	0153 = 04
+00e2	0154 = 08
+00e5	0155 = 08
+00e8	0158 = 00
+00eb	0159 = 01
+00ee	015a = 01
+00f1	015b = 00
+00f4	015e = 00
+00f7	015f = 01
+00fa	0160 = 00
+00fd	0161 = 00
+0100	01b9 = 00
+0103	01ba = 06
+0106	01c0 = 01
+0109	0261 = 00
+010c	0262 = 01
+010f	0263 = 01
+0112	0264 = 00
+0115	026c = 04
+0118	026e = 08
+011b	0270 = 08
+011e	0298 = 08
+0121	029a = 08
+0124	029c = 04
+0127	02a4 = 00
+012a	02a5 = 00
+012d	02a6 = 01
+0130	02a7 = 00
+0133	02cd = 00
+0136	02db = 00
+0139	02dc = 01
+013c	02dd = 03
+013f	02de = 00
+0142	02e0 = 01
+
+== Executing bytecode for TEST_ROOM_4.txt
+Loaded 325 bytes: 74 69 68 63 1 0 3 2 55 136 2 93 13 168 169 79 17 58 170 48 58 79 23 95 31 79 27 79 29 79 17 56 79 34 57 58 79 38 95 47 79 42 50 79 45 79 34 56 79 50 58 79 53 58 177 176 175 50 50 51 174 173 172 171 32 79 67 79 69 58 178 179 180 50 50 52 181 182 183 184 32 79 83 79 85 190 189 188 187 186 32 185 0 151 95 130 79 98 79 100 79 102 152 153 154 155 156 32 79 110 79 112 167 166 165 164 16 163 162 161 160 16 159 158 157 50 50 50 49 0 79 132 79 134 79 93 0 0 0 0 1 0 0 2 0 0 3 0 0 4 0 0 5 0 0 6 0 0 7 0 0 55 0 0 56 0 0 57 0 0 58 0 0 59 0 0 60 0 0 61 0 0 62 0 0 165 0 0 166 0 0 167 0 0 168 0 0 169 0 0 170 0 0 171 0 0 172 0 1 30 0 1 32 0 1 33 3 1 34 1 1 35 0 1 83 4 1 84 8 1 85 8 1 88 0 1 89 1 1 90 1 1 91 0 1 94 0 1 95 1 1 96 0 1 97 0 1 185 0 1 186 6 1 192 1 2 97 0 2 98 1 2 99 1 2 100 0 2 108 4 2 110 8 2 112 8 2 152 8 2 154 8 2 156 4 2 164 0 2 165 0 2 166 1 2 167 0 2 205 0 2 219 0 2 220 1 2 221 3 2 222 0 2 224 1
+VM Starting. Processes: 2.
+[proc1] 005c Halt after 280 ticks.
+[proc1] Stack top: 0
+[proc0] 0081 Halt after 311 ticks.
+[proc0] Stack top: 720
+== Done with TEST_ROOM_4.txt in 0.2340ms
+
+
+
+Process finished with exit code 0
+

@@ -1,0 +1,14 @@
+00000000                      ; [REG0] Low byte       ;
+00000000                      ; [REG1] High byte      ;
+       S<                     ; R1: Poll for IRQ ...  ;
+00000000                      ; [IRQ] Bytes available ;
+      v_^                                             ;
+      >    0 0310#        v   ; ... clear interrupt   ;
+ @ + * **488 ?0110 ?0100  <   ; ... Read bytes, exit. ;
+                                                      ;
+E06 > : 1- : v   v *  _ ! v   ; R2: Calculate 6!      ;
+    ^        _ ! > $: ^   :                           ;
+                                                      ;
+v # 0110 / * * 4 8 8 :    <   ; ... store high byte   ;
+> : 8 8 4 * * % 0010 #    v   ; ... store low byte    ;
+@ 0           # 0130 1    <   ; ... set IRQ, exit 0.  ;
