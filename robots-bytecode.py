@@ -208,7 +208,7 @@ def bytecode_name(byte: int, next_byte: int = -1) -> str:
     arg = byte & 0xf
 
     if op & 0x8:
-        return f"[{byte:02x}] PUSH @{byte & 0x7f:02x}"
+        return f"[{byte:02x}] PUSH {byte & 0x7f:02x} {next_byte:02x}"
 
     match op:
         case ByteCode.OP_HALT:
@@ -310,7 +310,8 @@ def dis(opcodes: bytearray, offset=0) -> str:
         op = (byte & 0xf0) >> 4
         arg = byte & 0x0f
         if op & ByteCode.OP_PUSH:
-            result += fmt_line(i + offset, bytecode_name(byte))
+            result += fmt_line(i + offset, bytecode_name(byte, opcodes[i+1]))
+            i += 1
         else:
             match op:
                 case ByteCode.OP_JMP:
@@ -378,7 +379,7 @@ class Compiler:
                 token = lex_char(ch)
                 if token.type == TokenType.T_COMMENT:
                     break
-                current_row.append(lex_char(ch))
+                current_row.append(token)
 
         self.init_mem()
 
@@ -422,6 +423,7 @@ class Compiler:
                         # Set refcount for JZ so it doesn't get optimized out.
                         self.jump_labels.append(Label(location=location, direction=dir_vec["<"], refcount=0))
                         self.jump_labels.append(Label(location=location, direction=dir_vec[">"], refcount=1))
+
                 if len(self.jump_labels) >= 255:
                     raise ValueError(f"Too many labels!")
 
@@ -468,6 +470,7 @@ class Compiler:
 
                 elif token.type == TokenType.T_COND:
                     # Zero and non-zero branches.
+                    # These labels were created in find_path_heads.
                     jz_target = Label(Vector(x, y), dir_vec[">"])
                     jnz_target = Label(Vector(x, y), dir_vec["<"])
                     path.extend(self.comp_jump_target(ByteCode.OP_JZ, jz_target))
@@ -475,14 +478,12 @@ class Compiler:
                     break
 
                 elif token.type == TokenType.T_DIGIT:
-                    # Create pointer to location in memory
                     addr16 = x + y * self.dim.x
-                    if addr16 > 65535:
-                        raise ValueError(f"Only support 16-bit addressing. Address {addr16} invalid.")
-                    offset = list(self.mem_addrs.keys()).index(addr16)
-                    if offset > 127:
-                        raise ValueError(f"Only support 127 integer values in source code.")
-                    path.append((ByteCode.OP_PUSH << 4) | (offset & 0x7f))
+                    if addr16 > 32767:
+                        raise ValueError(f"Only support 15-bit addressing. Address {addr16} too big!")
+                    # High seven bits in opcode byte; low eight bits in next byte.
+                    path.append((ByteCode.OP_PUSH << 4) | ((addr16 >> 8) & 0x7f))
+                    path.append(addr16 & 0xff)
 
                 elif token.type == TokenType.T_STACK_OP:
                     match token.value:
@@ -556,6 +557,10 @@ class Compiler:
 
         i = 0
         while i < len(path):
+            if path[i] & 0x80:
+                # Skip over PUSH and subsequent addr byte
+                i += 2
+                continue
             if path[i] in jump_bytes:
                 target = path[i + 1]
                 if self.jump_labels[target].refcount < 2:
@@ -571,7 +576,12 @@ class Compiler:
 
     def resolve_jump_addresses(self, code: bytearray, label_offsets: dict) -> None:
         i = 0
+        print(label_offsets)
         while i < len(code):
+            if code[i] & 0x80:
+                # Skip over PUSH and subsequent addr byte
+                i += 2
+                continue
             if code[i] in jump_bytes:
                 # Curious that you can't do this assignment in one line.
                 temp_index = code[i + 1]
@@ -598,8 +608,8 @@ class Compiler:
         self.parse_paths()
 
         header = self.build_header()
-        start_offset = len(header)
-        offset = start_offset
+        code_offset = len(header)
+        offset = code_offset
 
         for label in self.jump_labels:
             # This does a little extra pointless work.
@@ -615,11 +625,17 @@ class Compiler:
             path = self.paths[next_path_index]
 
             # scan path for next paths to follow
-            for i in range(len(path)):
+            i = 0
+            while i < len(path):
+                if path[i] & 0x80:
+                    # Skip over PUSH and subsequent addr byte
+                    i += 2
+                    continue
                 if path[i] in jump_bytes:
                     # Prevent infinite loops.
                     if path[i + 1] not in seen:
                         path_stack.append(path[i + 1])
+                i += 1
 
             code.extend(path)
             offset += len(path)
@@ -627,13 +643,13 @@ class Compiler:
         # TODO refactor and hide all this
         header_len = len(header)
         code_len = len(code)
-        mem_offset = header_len + code_len
+        data_offset = header_len + code_len
         # memory size and offset
         mem_length = self.dim.x * self.dim.y
         header[header_sections['mem_length']] = (mem_length >> 8) & 0xff
         header[header_sections['mem_length'] + 1] = mem_length & 0xff
         header[header_sections['mem_stride']] = self.dim.x
-        header[header_sections['data_segment']] = mem_offset & 0xff
+        header[header_sections['data_segment']] = data_offset & 0xff
 
         self.resolve_entry_addresses(header, 11, label_offsets)
 
@@ -643,9 +659,9 @@ class Compiler:
 
         print(format_header(header))
         print("\t:code")
-        print(dis(code, start_offset))
+        print(dis(code, code_offset))
         print("\t:data")
-        print(format_footer(footer, mem_offset))
+        print(format_footer(footer, data_offset))
 
         output.extend(header)
         output.extend(code)
@@ -676,7 +692,6 @@ class VirtualMachine:
         self.processes: list[Process] = []
         self.memory: bytearray = bytearray()
         self.mem_stride: int = 0
-        self.pointers: dict[int, int] = {}
         self.ticks = 0
 
     def _load_byte(self, proc: Process) -> None:
@@ -737,8 +752,11 @@ class VirtualMachine:
                 #     print(f"[proc{proc.id}] {proc.pc:04x} {bytecode_name(bytecode)}")
                 if op & 0x8:
                     # Special-case for PUSH
-                    arg = bytecode & 0x7f
-                    proc.stack.push(self.memory[self.pointers[arg]])
+                    high7 = bytecode & 0x7f
+                    low8 = self.bytecode[proc.pc + 1]
+                    addr16 = (high7 << 8) | low8
+                    proc.stack.push(self.memory[addr16])
+                    proc.pc += 1
                 else:
                     match op:
                         case ByteCode.OP_HALT:
@@ -791,7 +809,6 @@ class VirtualMachine:
         while i < len(self.bytecode):
             addr16 = ((self.bytecode[i] << 8) | self.bytecode[i + 1])
             self.memory[addr16] = self.bytecode[i + 2]
-            self.pointers[len(self.pointers)] = addr16
             i += 3
 
     def load(self, bytecode: bytearray) -> None:

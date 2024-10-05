@@ -19,7 +19,8 @@ There are many ways to think about the solution, either with functional
 or object-oriented patterns, and with architectures ranging 
 from game development to parsers and interpreters. In the process, you get to see
 a lot of the candidate's approach to a problem, awareness of edge cases, approaches
-to design and architecture, modularity and structure, defensive programming, etc.
+to design and architecture, modularity and structure, defensive fail-fast
+programming, etc.
 
 As a quick example, 
 
@@ -48,6 +49,8 @@ For inputs, see:
 For an interpreter, see:
 
 - [robots-interpreter.py](robots-interpreter.py)
+
+Ok, enough background.
 
 ## Nerd Sniped: Concurrency
 
@@ -280,14 +283,15 @@ with an argument in the lower four bits.
 
 - `PUSH`
 
-  This is the only opcode with the high bit set. The pointer index of
-  the value to load from memory and push on to the stack is encoded in
-  the lower 7 bits.
+  This is the only opcode with the high bit set. The address in memory
+  of the value to push is the remaining 7 bits from the PUSH opcode
+  (high byte) and the following opcode (low byte).
 
-  for example the opcode `0xe4` has high bit set; lower 7 bits are
-  `0xe4 & 0x7f` which is `0x64` (decimal 100). The opcode `0xe4` therefore 
-  means "Get the memory address recorded at offset 100 in the data segment;
-  load the value at that address and push it onto the stack." 
+  For example the opcode sequence `0xe1 0x64` means "PUSH value at memory
+  address `0x0164`".
+
+  (When I first put this together, I tried saving a byte of opcodes by
+  using all pointer references to the stack. That seemed pretty gross.)
 
 
 ### Further Room for Improvement
@@ -359,12 +363,12 @@ Get this bytecode:
 000b	0c
 
 	:code
-000c	[80] PUSH @00
-000d	[81] PUSH @01
-000e	[30] SUB
-000f	[82] PUSH @02
+000c	[80] PUSH 00 01
+000e	[80] PUSH 00 11
 0010	[30] SUB
-0011	[00] HALT
+0011	[80] PUSH 00 17
+0013	[30] SUB
+0014	[00] HALT
 
 	:data
 0012	0001 = 08
@@ -401,26 +405,35 @@ The 16-bit address is the location of a value in the memory array; the
 next byte is its initial value. This shows where the initial `8`, `5`, and
 `1` of the text input are located.
 
-These values can in turn be referenced by their offset in the data segment,
-which, for example, is what `PUSH @01` is doing: "Look at offset 1 in the 
-data segment; get its memory location (`0011`); now get the value
-at location `0011` and push that on the stack. This indirection is necessary
-because any robot can change those memory values, which is what happens
-with the concurrent room in which one robot polls for data written by another.
+When the virtual machine reads the bytecode, it initializes the room memory
+with the values specified at each 15-bit address. For example, memory for
+the segment above will be initialized as:
 
-The initial values `8`, `5`, and `1` are only used when initializing memory
-from the bytecode. Values can change, but the memory address associated 
+```
+0x00  00 08 00 00 00 00 00 00
+0x08  00 00 00 00 00 00 00 00
+0x10  00 05 00 00 00 00 00 01
+...
+```
+
+Values can change, but the memory address associated 
 with a value location in the input cannot change.
 
-An obviously undesirable feature here is that *every* memory access requires
-a pointer dereference, which is a gross thing to see. It performs better 
-than the interpreted version (about 2.5x faster in the python version here),
-which isn't a great improvement, but it's a start.
+The python [Virtual Machine](./robots-bytecode.py) output for
+[Room 4](./TEST_ROOM_4.txt):
 
-My impulse was to make the bytecode compact, but doing so necessitated this
-pointer approach. I think the next iteration should just put the 16-bit
-memory addresses inline after each `PUSH` instruction and get on with life.
-It will take a few more instructions, but spare a lot of computation.
+```
+== Executing bytecode for TEST_ROOM_4.txt
+Loaded 327 bytes: 74 69 68 63 1 0 3 2 55 138 2 92 13 129 185 129 186 79 19 58 129 192 48 58 95 28 79 19 56 79 31 57 58 95 38 50 79 31 56 58 58 130 112 130 110 130 108 50 50 51 130 100 130 99 130 98 130 97 32 58 130 152 130 154 130 156 50 50 52 130 164 130 165 130 166 130 167 32 130 224 130 222 130 221 130 220 130 219 32 130 205 0 128 172 95 136 129 30 129 32 129 33 129 34 129 35 32 129 97 129 96 129 95 129 94 16 129 91 129 90 129 89 129 88 16 129 85 129 84 129 83 50 50 50 49 0 79 92 0 0 0 0 1 0 0 2 0 0 3 0 0 4 0 0 5 0 0 6 0 0 7 0 0 55 0 0 56 0 0 57 0 0 58 0 0 59 0 0 60 0 0 61 0 0 62 0 0 165 0 0 166 0 0 167 0 0 168 0 0 169 0 0 170 0 0 171 0 0 172 0 1 30 0 1 32 0 1 33 3 1 34 1 1 35 0 1 83 4 1 84 8 1 85 8 1 88 0 1 89 1 1 90 1 1 91 0 1 94 0 1 95 1 1 96 0 1 97 0 1 185 0 1 186 6 1 192 1 2 97 0 2 98 1 2 99 1 2 100 0 2 108 4 2 110 8 2 112 8 2 152 8 2 154 8 2 156 4 2 164 0 2 165 0 2 166 1 2 167 0 2 205 0 2 219 0 2 220 1 2 221 3 2 222 0 2 224 1
+VM Starting. Processes: 2.
+[proc1] 005b Halt after 204 ticks.
+[proc1] Stack top: 0
+[proc0] 0087 Halt after 230 ticks.
+[proc0] Stack top: 720
+== Done with TEST_ROOM_4.txt in 0.2391ms
+```
+
+The value we want (720) is on top of the stack of process 0.
 
 There are probably plenty of other ways to make further optimizations with further
 pre-processing passes
