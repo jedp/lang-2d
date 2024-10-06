@@ -2,6 +2,7 @@ from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import IntEnum
+from os import path
 from time import perf_counter
 
 magic: bytearray = bytearray(map(ord, "JED?"))
@@ -842,10 +843,13 @@ def test_compiler():
                       'TEST_ROOM_3.txt',
                       'TEST_ROOM_4.txt']:
         with open(room_name) as f:
-            print(f"== Compiling {room_name}")
+            outfile_name = path.splitext(room_name)[0].lower() + '.oof'
+            print(f"== Compiling {room_name} -> {outfile_name}")
             c = Compiler()
             c.load_string(f.read())
             bytecode = c.compile()
+
+            open(outfile_name, 'wb').write(bytecode)
 
             print(f"== Executing bytecode for {room_name}")
             v = VirtualMachine()
