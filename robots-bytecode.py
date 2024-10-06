@@ -419,8 +419,8 @@ class Compiler:
                         self.jump_labels.append(Label(location=location, direction=dir_vec[token.value]))
                     case TokenType.T_COND:
                         # Both paths for conditional
-                        # Set refcounts so they don't get optimized out.
-                        self.jump_labels.append(Label(location=location, direction=dir_vec["<"], refcount=1))
+                        # Set refcount for JZ so it doesn't get optimized out.
+                        self.jump_labels.append(Label(location=location, direction=dir_vec["<"], refcount=0))
                         self.jump_labels.append(Label(location=location, direction=dir_vec[">"], refcount=1))
                 if len(self.jump_labels) >= 255:
                     raise ValueError(f"Too many labels!")
@@ -601,8 +601,9 @@ class Compiler:
         start_offset = len(header)
         offset = start_offset
 
-        for path_index in self.entry_points:
-            self.maximally_extend_path(path_index)
+        for label in self.jump_labels:
+            # This does a little extra pointless work.
+            self.maximally_extend_path(self.get_label_index(label))
 
         path_stack.extend(self.entry_points)
 
