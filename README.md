@@ -1,5 +1,14 @@
 # 2D Language Games
 
+A toy 2D stack-based language (like Befunge) that can perform concurrent work
+on shared memory.
+
+Includes:
+
+- [Python interpreter](./robots-interpreter.py)
+- [Bytecode compiler and Python VM](./robots-interpreter.py)
+- [C VM](./vm.c)
+
 ## Background: Interview Question
 
 This started as an innocent interview question. I won't go into the prompt and
@@ -45,8 +54,9 @@ For inputs, see:
 - [Test Room 1](TEST_ROOM_1.txt)
 - [Test Room 2](TEST_ROOM_2.txt)
 - [Test Room 3](TEST_ROOM_3.txt)
+- Test Room 4 ... wait until we get further below.
 
-For an interpreter, see:
+For an example Python interpreter, see:
 
 - [robots-interpreter.py](robots-interpreter.py)
 
@@ -435,10 +445,59 @@ VM Starting. Processes: 2.
 
 The value we want (720) is on top of the stack of process 0.
 
-There are probably plenty of other ways to make further optimizations with further
-pre-processing passes
-but I'm not
-going to try to figure them out because I'm done being nerd-sniped by this.
+### Another Bytecode Example
+
+There's also a VM written in C, [vm.c](./vm.c). I didn't try to optimize anything,
+but it still runs about 30 times faster than the Python version.
+
+Simply compiles with gcc. No special flags or std lib version.
+
+Be sure to run the Python [robots-bytecode.py](./robots-bytecode.py) first, as that
+contains the compiler that compiles and writes all the bytecode files (they end
+in `.oof`).
+
+Same example as in the previous section, but here's the full bytecode listing this time:
+
+```
+>  hexdump -C test_room_4.oof
+00000000  4a 45 44 3f 01 00 03 02  37 8a 02 5c 0d 81 b9 81  |JED?....7..\....|
+00000010  ba 4f 13 3a 81 c0 30 3a  5f 1c 4f 13 38 4f 1f 39  |.O.:..0:_.O.8O.9|
+00000020  3a 5f 26 32 4f 1f 38 3a  3a 82 70 82 6e 82 6c 32  |:_&2O.8::.p.n.l2|
+00000030  32 33 82 64 82 63 82 62  82 61 20 3a 82 98 82 9a  |23.d.c.b.a :....|
+00000040  82 9c 32 32 34 82 a4 82  a5 82 a6 82 a7 20 82 e0  |..224........ ..|
+00000050  82 de 82 dd 82 dc 82 db  20 82 cd 00 80 ac 5f 88  |........ ....._.|
+00000060  81 1e 81 20 81 21 81 22  81 23 20 81 61 81 60 81  |... .!.".# .a.`.|
+00000070  5f 81 5e 10 81 5b 81 5a  81 59 81 58 10 81 55 81  |_.^..[.Z.Y.X..U.|
+00000080  54 81 53 32 32 32 31 00  4f 5c 00 00 00 00 01 00  |T.S2221.O\......|
+00000090  00 02 00 00 03 00 00 04  00 00 05 00 00 06 00 00  |................|
+000000a0  07 00 00 37 00 00 38 00  00 39 00 00 3a 00 00 3b  |...7..8..9..:..;|
+000000b0  00 00 3c 00 00 3d 00 00  3e 00 00 a5 00 00 a6 00  |..<..=..>.......|
+000000c0  00 a7 00 00 a8 00 00 a9  00 00 aa 00 00 ab 00 00  |................|
+000000d0  ac 00 01 1e 00 01 20 00  01 21 03 01 22 01 01 23  |...... ..!.."..#|
+000000e0  00 01 53 04 01 54 08 01  55 08 01 58 00 01 59 01  |..S..T..U..X..Y.|
+000000f0  01 5a 01 01 5b 00 01 5e  00 01 5f 01 01 60 00 01  |.Z..[..^.._..`..|
+00000100  61 00 01 b9 00 01 ba 06  01 c0 01 02 61 00 02 62  |a...........a..b|
+00000110  01 02 63 01 02 64 00 02  6c 04 02 6e 08 02 70 08  |..c..d..l..n..p.|
+00000120  02 98 08 02 9a 08 02 9c  04 02 a4 00 02 a5 00 02  |................|
+00000130  a6 01 02 a7 00 02 cd 00  02 db 00 02 dc 01 02 dd  |................|
+00000140  03 02 de 00 02 e0 01                              |.......|
+00000147
+
+> gcc vm.c -o vm
+
+> ./vm test_room_4.oof
+Exec bytecode: 327 bytes.
+Robot 1 halted at tick 204. Last value: 0
+Robot 0 halted at tick 230. Last value: 720
+Elapsed CPU time: 12 µs.
+```
+
+## More to do?
+
+There are probably plenty of other ways to make other optimizations, in addition to
+the ones suggested above, with further pre-processing passes.
+But I'm not going to try to figure them out right now because
+I think I'm done being nerd-sniped by this.
 
 For now.
 
