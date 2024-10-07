@@ -45,7 +45,6 @@ typedef enum {
     ERR_NOT_RUNNING,
     ERR_RUNTIME_STACK_UNDERFLOW,
     ERR_RUNTIME_DIVISION_BY_ZERO,
-    ERR_NOT_IMPLEMENTED,
 } err_t;
 
 typedef struct {
@@ -61,7 +60,6 @@ typedef struct {
     uint16_t code_size;
     uint16_t data_seg;
     uint16_t mem_size;
-    uint8_t mem_stride;
     uint8_t n_robots;
     robot_t *robots[16];
 } vm_t;
@@ -104,21 +102,23 @@ static err_t init_vm(vm_t *vm, int code_sz) {
     uint8_t mem_stride = bytecode[8];
     vm->code_size = code_size;
     vm->mem_size = mem_size;
-    vm->mem_stride = mem_stride;
     vm->data_seg = bytecode[9];
     vm->n_robots = bytecode[10];
 
-    err |= init_heap(vm, code_sz);
+    err = init_heap(vm, code_sz);
+    if (err != ERR_NO_ERROR) {
+        return err;
+    }
 
     for (int i = 0; i < vm->n_robots; i++) {
         robot_t *robot = malloc(sizeof(robot_t));
         robot->stack = malloc(sizeof(int) * mem_size);
+        robot->running = 0;
+        robot->entry_point = bytecode[11 + i];
+        robot->pc = bytecode[11 + i];
+        robot->sp = 0;
+        robot->stride = mem_stride;
         vm->robots[i] = robot;
-        vm->robots[i]->running = 0;
-        vm->robots[i]->entry_point = bytecode[11 + i];
-        vm->robots[i]->pc = bytecode[11 + i];
-        vm->robots[i]->sp = 0;
-        vm->robots[i]->stride = mem_stride;
     }
 
     return err;
@@ -150,7 +150,6 @@ static err_t handle_stack_op(robot_t *robot, stack_op_t op) {
 
     // Remaining ops require one thing on the stack.
     if (robot->sp < 0) {
-        printf("NOOOOOOOOOOO! sp is %d\n", robot->sp);
         return ERR_RUNTIME_STACK_UNDERFLOW;
     }
 
@@ -158,6 +157,8 @@ static err_t handle_stack_op(robot_t *robot, stack_op_t op) {
         int top = robot->stack[robot->sp - 1];
         robot->stack[robot->sp++] = top;
         return ERR_NO_ERROR;
+    } else if (op == ST_NOT) {
+        robot->stack[robot->sp - 1] = ~robot->stack[robot->sp - 1];
     }
 
     // Remaining ops require two things on the stack.
@@ -261,22 +262,18 @@ static err_t next_tick(robot_t *robot) {
         robot->pc++;
     } else {
         switch (op) {
-            case OP_HALT: {
+            case OP_HALT:
                 robot->running = 0;
                 break;
-            }
-            case OP_LOAD: {
+            case OP_LOAD:
                 err = read_byte(robot);
                 break;
-            }
-            case OP_STORE: {
+            case OP_STORE:
                 err = write_byte(robot);
                 break;
-            }
-            case OP_STACK: {
+            case OP_STACK:
                 err |= handle_stack_op(robot, arg);
                 break;
-            }
             case OP_JMP: {
                 uint16_t target;
                 if (arg != 0xf) {
@@ -324,21 +321,23 @@ static err_t exec(int sz) {
         goto done;
     }
 
-    uint16_t running_robots = 0;
     if (vm->n_robots > 16) {
         printf("Sadly, VM can't handle that many robots.\n");
         err = ERR_NOT_SUPPORTED;
         goto done;
     }
 
+    // Max 16 robots; Bit flag for each robot that's running.
+    uint16_t running_robots = 0;
     for (int i = 0; i < vm->n_robots; i++) {
         vm->robots[i]->running = 1;
         running_robots |= 1 << i;
     }
 
+    // Time execution.
     struct timespec start_ts, end_ts;
-
     clock_gettime(CLOCK_REALTIME, &start_ts);
+
     int ticks = 0;
     while (running_robots) {
         for (int i = 0; i < vm->n_robots; i++) {
@@ -347,7 +346,10 @@ static err_t exec(int sz) {
             }
             robot_t *robot = vm->robots[i];
             if (robot->running) {
-                if (next_tick(robot) != ERR_NO_ERROR) {
+                err = next_tick(robot);
+                if (err != ERR_NO_ERROR) {
+                    // TODO fun to have a disassembler here.
+                    printf("Robot %d: Error %d! pc=%d, sp=%d\n", i, err, robot->pc, robot->sp);
                     goto done;
                 }
                 ticks++;
