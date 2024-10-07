@@ -13,35 +13,39 @@ Includes:
 
 This started as an innocent interview question. I won't go into the prompt and
 detailed steps, but in its essentials, the interview question I've been using
-for years guides
-you in creating a make-believe robot that rolls around on a floor, interpreting
-and reacting to 
-characters drawn on the floor as it drives over them. There are arrow characters
-to make the robot rotate, digits and arithmetic symbols to cause the robot to
-perform stack-based arithmetic operations, etc. In the end, you've made something
-like an adorable Befunge interpreter.
+for years guides you in creating a make-believe robot that rolls around on a
+floor, interpreting and reacting to characters drawn on the floor as it drives
+over them. There are arrow characters to make the robot rotate, digits and
+arithmetic symbols to cause the robot to perform stack-based arithmetic
+operations, etc. In the end, you've made something like an adorable Befunge
+interpreter.
 
 I like the question because it has multiple steps that flow into each other,
-getting progressively more complicated.
-There are no "aha" or gotcha moments and no special algorithms you have to know.
-There are many ways to think about the solution, either with functional
-or object-oriented patterns, and with architectures ranging 
-from game development to parsers and interpreters. In the process, you get to see
-a lot of the candidate's approach to a problem, awareness of edge cases, approaches
-to design and architecture, modularity and structure, defensive fail-fast
-programming, etc.
+getting progressively more complicated. There are no "aha" or gotcha moments
+and no special algorithms you have to know. There are many ways to think about
+the solution, either with functional or object-oriented patterns, and with
+architectures ranging from game development to parsers and interpreters. In the
+process, you get to see a lot of the candidate's approach to a problem,
+awareness of edge cases, approaches to design and architecture, modularity and
+structure, defensive fail-fast programming, etc.
 
 As a quick example, 
 
 - `@` means halt
+
 - `>`, `^`, `<`, `v` mean rotate
+
 - `0`, `1`, ... `9` mean push a value on the stack
+
 - `-` means do subtraction on the stack
+
+- `_` is a conditional: Pop stack; if 0, face right, else face left.
+
 - After interpreting a character, move forward one space (except after halt, of course)
 
-So if you start in the upper-left of the following map,
-you follow the arrows and calculate
-`8 5 - 1 -` (2), before landing on `@` and halting.
+
+So if you start in the upper-left of the following map, you follow the arrows
+and calculate `8 5 - 1 -` (2), before landing on `@` and halting.
 
 > ```
 > > 8     v
@@ -49,61 +53,63 @@ you follow the arrows and calculate
 >   ^ -1 -<
 > ```
 
-For inputs, see:
+This one uses the conditional instruction to decide when to break out of loops.
+The program computes 5 factorial:
 
-- [Test Room 1](TEST_ROOM_1.txt)
-- [Test Room 2](TEST_ROOM_2.txt)
-- [Test Room 3](TEST_ROOM_3.txt)
-- Test Room 4 ... wait until we get further below.
+```
+05 > : 1- : v   v *  _ ! @
+   ^        _ ! > $: ^    
+```
 
 For an example Python interpreter, see:
 
 - [robots-interpreter.py](robots-interpreter.py)
 
-Ok, enough background.
 
 ## Nerd Sniped: Concurrency
 
-When discussing this question with my friend Chris Hayes,
-he proposed an implementation that left room for multiple 
-robots to move about the same room concurrently.
+When discussing this question with my friend Chris Hayes, he proposed an
+implementation that left room for multiple robots to move about the same room
+concurrently.
 
-What a fun idea! And thanks, Chris, for totally nerd-sniping
-me into writing an interpreter that handles concurrency.
+What a fun idea! And thanks, Chris, for totally nerd-sniping me into writing an
+interpreter that handles concurrency.
 
-For the concurrent interpreter, let's first add a few more
-rules and instructions.
+For the concurrent interpreter, let's first add a few more rules and
+instructions.
 
-- The only legal start spaces are `N`, `S`, `E`, and `W`. 
-  They act just like the arrow symbols, but have the special
-  meaning "a robot starts here, facing this way."
+- The only legal start spaces are `N`, `S`, `E`, and `W`. They act just like
+  the arrow symbols, but have the special meaning "a robot starts here, facing
+  this way."
 
-- Shared memory. The robot can read or write a "byte" on the floor.
-  Each bit in the byte is converted to the character
-  representation of `1` or `0`. Delightfully thread-unsafe.
+- Shared memory. The robot can read or write a "byte" on the floor. Each bit in
+  the byte is converted to the character representation of `1` or `0`.
+  Delightfully thread-unsafe.
 
   The functions for these take 4 or 5 stack arguments:
 
-  - `[x] [y] [dx] [dy] ?`: Read the 8 characters on the floor
-    starting at `(x, y)`, facing in the direction `(dx, dy)`,
-    and interpret them as a binary byte. Push the value of the byte
-    on the stack.
-  - `[val] [x] [y] [dx] [dy] #`: Convert `val` to a "byte"
-    and write its bits on the floor starting at `(x, y)`,
-    facing in the `(dx, dy)` direction.
+  - `[x] [y] [dx] [dy] ?`: Read the 8 characters on the floor starting at `(x,
+    y)`, facing in the direction `(dx, dy)`, and interpret them as a binary
+    byte. Push the value of the byte on the stack.
 
-  For example, if the eight characters `11001011` were written
-  beginning at `(1, 2)` and ending at `(8, 2)`, you would read
-  them with `1 2 1 0 ?`. This would push the value 203 on
-  the stack.
+  - `[val] [x] [y] [dx] [dy] #`: Convert `val` to a "byte" and write its bits
+    on the floor starting at `(x, y)`, facing in the `(dx, dy)` direction.
+
+  For example, if the eight characters `11001011` were written beginning at
+  `(1, 2)` and ending at `(8, 2)`, you would read them with `1 2 1 0 ?`. This
+  would push the value 203 on the stack.
+
+  Note that the stack contains ints, not bytes, so you have to mask and shift
+  the byte you want using stack arithmetic.
  
-- A comment character `;` that means "ignore everything from here
-  to the right edge". (They have the downsize of bloating the input
-  size, which will have consequences in the future, but for now
-  let's just live with it.)
+- A comment character `;` that means "ignore everything from here to the right
+  edge". (They have the downside of bloating the input size, which will have
+  consequences in the future, but for now let's just live with it.)
 
-With this, we can evaluate the following room with two
-concurrently executing robots:
+With this, we can evaluate the following room with two concurrently executing
+robots:
+
+- [Test Room 4](TEST_ROOM_4.txt)
 
 ```
 00000000                      ; [REG0] Low byte       ;
@@ -122,32 +128,22 @@ v # 0110 / * * 4 8 8 :    <   ; ... store high byte   ;
 @ 0           # 0130 1    <   ; ... set IRQ, exit 0.  ;
 ```
 
-The source is in:
+One of the robots starts on the `S`. Call it Robot 0. It spins around and
+around, reading the character at `(7, 3)` over and over. If this character ever
+turns into a `1`, it quickly sets it back to `0` and then reads the two "bytes"
+in the upper left. With some bit-shifting, it combines these into a single
+16-bit value, pushes the result, and exits.
 
-- [Test Room 4](TEST_ROOM_4.txt)
+Meanwhile, the other robot, Robot 1, has been calculating the value of 6
+factorial. Having done so, it writes the 16-bit value into the high and low
+"bytes" in the upper left, sets the aforementioned `0` bit to a `1` to signal
+that it has completed its computation, and exits.
 
-One of the robots starts on the `S`. Call it Robot 0.
-It spins around and
-around, reading the character at `(7, 3)` over and over.
-If this character ever turns into a `1`, it quickly sets
-it back to `0` and then reads the two "bytes" in the upper
-left. With some bit-shifting, it combines these into a 
-single 16-bit value, pushes the result, and exits.
+So Robot 1 sets a flag when it's done, and Robot 0 reads and clears the flag,
+gets the shared memory value, and pushes it on its own stack.
 
-Meanwhile, the other robot, Robot 1, has been calculating
-the value
-of 6 factorial. Having done so, it writes the 16-bit value
-into the high and low "bytes" in the upper left, sets the
-aforementioned `0` bit to a `1` to signal that it has
-completed its computation, and exits.
-
-So Robot 1 sets a flag when it's done, and Robot 0
-reads and clears the flag, gets the shared memory value,
-and pushes it on its own stack.
-
-Here's how that room plays out on my machine. The interpreter
-prints the room every time a robot is done, so you can see
-how the "bytes" evolve:
+Here's how that room plays out on my machine. The interpreter prints the room
+every time a robot is done, so you can see how the "bytes" evolve:
 
 ```
 == Entering room: TEST_ROOM_4.txt
@@ -198,13 +194,12 @@ Received 720 from robot 0.
 
 ## More Nerd Sniped: Bytecode Compiler
 
-It's fun to see the interpreter process the room and coordinate
-the robots, but could we condense these programs into bytecode
-and write a virtual machine to run them on any platform?
+It's fun to see the interpreter process the room and coordinate the robots, but
+could we condense these programs into bytecode and write a virtual machine to
+run them on any platform?
 
-One immediate benefit of the bytecode would be to optimize out
-no-op spaces and useless turns. For example, consider the following
-basic room:
+One immediate benefit of the bytecode would be to optimize out no-op spaces and
+useless turns. For example, consider the following basic room:
 
 ```
 E       v
@@ -220,9 +215,9 @@ This should be compiled down to pseudo bytecode like the following:
 
 The program does nothing but halt.
 
-Likewise, programs that perform calculations should have their paths
-maximally shortened. For example, consider the room in which the 
-subtraction operator is introduced:
+Likewise, programs that perform calculations should have their paths maximally
+shortened. For example, consider the room in which the subtraction operator is
+introduced:
 
 ```
 E8      v
@@ -241,17 +236,17 @@ This should compile to something like the following:
 5  HALT
 ```
 
-So this is all looking like bytecode is going to make things so neat
-and tidy and portable. Fun!
+So this is all looking like bytecode is going to make things so neat and tidy
+and portable. Fun!
 
 
 ### Bytecode
 
-The bytecode instruction set ends up being very tidy and compact, with 
-just seven instructions.
+The bytecode instruction set ends up being very tidy and compact, with just
+seven instructions.
 
-The opcode can typically be stored in the high four bits of the byte,
-with an argument in the lower four bits.
+The opcode can typically be stored in the high four bits of the byte, with an
+argument in the lower four bits.
 
 - `HALT`
 
@@ -272,70 +267,68 @@ with an argument in the lower four bits.
 
 - `STACK`
 
-  Perform an operation on the stack. The operation is encoded in the 
-  lower four bits of the opcode.
+  Perform an operation on the stack. The operation is encoded in the lower four
+  bits of the opcode.
 
   `POP`, `SWAP`, and `DUP` manipulate the stack directly.
 
-  Other instructions perform computations on the top one or two 
-  stack elements: `NEG`, `SUB`, `MUL`, `MOD`, `AND`, `OR`, etc.
+  Other instructions perform computations on the top one or two stack elements:
+  `NEG`, `SUB`, `MUL`, `MOD`, `AND`, `OR`, etc.
 
 - `JMP`
 
-  Jump to an offset in the bytecode. If the offset is less than 15,
-  it is stored in the lower four bits. If greater, the lower four bits
-  are set to 15 and the next byte contains the offset.
+  Jump to an offset in the bytecode. If the offset is less than 15, it is
+  stored in the lower four bits. If greater, the lower four bits are set to 15
+  and the next byte contains the offset.
 
 - `JZ`
  
-  Same offset encoding as `JMP`. Pops a value from the stack and jumps
-  to one target on 0 and another on non-zero.
+  Same offset encoding as `JMP`. Pops a value from the stack and jumps to one
+  target on 0 and another on non-zero.
 
 - `PUSH`
 
-  This is the only opcode with the high bit set. The address in memory
-  of the value to push is the remaining 7 bits from the PUSH opcode
-  (high byte) and the following opcode (low byte).
+  This is the only opcode with the high bit set. The address in memory of the
+  value to push is the remaining 7 bits from the PUSH opcode (high byte) and
+  the following opcode (low byte).
 
   For example the opcode sequence `0xe1 0x64` means "PUSH value at memory
   address `0x0164`".
 
-  (When I first put this together, I tried saving a byte of opcodes by
-  using all pointer references to the stack. That seemed pretty gross.)
+  (When I first put this together, I tried saving a byte of opcodes by using
+  all pointer references to the stack. Saving a byte is nice, but requiring
+  pointer indirection for all memory lookups is pretty gross, so I've added
+  an extra address byte for all PUSHes.)
 
 
 ### Further Room for Improvement
 
-Looking back at the subtraction map (the one that computes `8 5 - 1 -`)
-You might push further and say,
-Well, since it's clear at compile time that this expression
-never changes, it should ideally compile down to:
+Looking back at the subtraction map (the one that computes `8 5 - 1 -`) You
+might push further and say, Well, since it's clear at compile time that this
+expression never changes, it should ideally compile down to:
 
 ```
 0  PUSH 2
 1  HALT
 ```
 
-I agree. But I haven't made it that far yet. There might be a way to
-optimize constant expressions out (I'm not sure, tbh, because I haven't
-tried yet), but more
-"realistic" programs have conditionals and memory value mutations. And since
-all expressions can be computed at runtime, it's going to be challenging
-to know what expression will be constant and what will be mutable.
+I agree. I'm not sure how to go about this, though. There might be a way to
+optimize constant expressions out, but more "realistic" programs have
+conditionals and memory value mutations. And since all expressions can be
+computed at runtime, it's challenging to figure out which expressions will be
+constant and which will be mutable.
 
-Another problem that arises when we compile down to bytecode is that we
-lose the geometric information of the original grid. How do we know where
-`(1,1)` is in the compiled code?
+Another problem that arises when we compile down to bytecode is that we lose
+the geometric information of the original grid. How do we know where `(1,1)` is
+in the compiled code?
 
-The quick and dirty solution for this is to create a memory array the same
-size as the program and record each value at its location offset in this
-array. We additionally store a pointer to that offset. Why? Because the
-robots can stomp all over each other's memory and symbols, and it's
-necessary to re-read a value every time we land on one.
+The quick and dirty solution for this is to create a memory array the same size
+as the program and record each value at its location offset in this array. We
+additionally store a pointer to that offset. Why? Because the robots can stomp
+all over each other's memory and symbols, and it's necessary to re-read a value
+every time we land on one.
 
 ### Bytecode Example
-
-At this point, it'll be easier just to show the compiled bytecode.
 
 Here's a compiler and virtual machine:
 
@@ -386,24 +379,28 @@ Get this bytecode:
 0018	0017 = 01
 ```
 
-You can read the generated bytecode for each room and compare with the interpreter
-in the attached `output` files.
+You can read the generated bytecode for each room and compare with the
+interpreter in the attached `output` files.
 
-The header includes some bytecode-y information, like a magic number and version
-number.
+The header includes some bytecode-y information, like a magic number and
+version number.
 
 Then it reports the following crucial values:
 
-- Memory length: How many bytes long the input was, which is the number
-  of bytes we have to allocate as our memory.
+- Memory length: How many bytes long the input was, which is the number of
+  bytes we have to allocate as our memory.
+
 - Memory stride: This is the length of the x direction in the input. In the
-  array memory model, your offset when going "up" or "down" is `x + y * stride`.
-- Data segment offset: After the program ends, where initial state values
-  are recorded.
+  array memory model, your offset when going "up" or "down" is `x + y *
+  stride`.
+
+- Data segment offset: After the program ends, where initial state values are
+  recorded.
+
 - Entry points: The number of entry points and their offsets in the bytecode.
  
-Looking at the data segment here, it contains three-byte group, each holding 
-a 16-bit address value and a byte value:
+Looking at the data segment here, it contains three-byte group, each holding a
+16-bit address value and a byte value:
 
 ```
 00 01 08
@@ -411,13 +408,13 @@ a 16-bit address value and a byte value:
 00 17 01
 ```
 
-The 16-bit address is the location of a value in the memory array; the 
-next byte is its initial value. This shows where the initial `8`, `5`, and
-`1` of the text input are located.
+The 16-bit address is the location of a value in the memory array; the next
+byte is its initial value. This shows where the initial `8`, `5`, and `1` of
+the text input are located.
 
 When the virtual machine reads the bytecode, it initializes the room memory
-with the values specified at each 15-bit address. For example, memory for
-the segment above will be initialized as:
+with the values specified at each 15-bit address. For example, memory for the
+segment above will be initialized as:
 
 ```
 0x00  00 08 00 00 00 00 00 00
@@ -426,8 +423,8 @@ the segment above will be initialized as:
 ...
 ```
 
-Values can change, but the memory address associated 
-with a value location in the input cannot change.
+Values can change, but the memory address associated with a value location in
+the input cannot change.
 
 The python [Virtual Machine](./robots-bytecode.py) output for
 [Room 4](./TEST_ROOM_4.txt):
@@ -445,18 +442,22 @@ VM Starting. Processes: 2.
 
 The value we want (720) is on top of the stack of process 0.
 
+That's 0.2391ms on my old-ish 2.4GHz Intel Mac.
+
 ### Another Bytecode Example
 
-There's also a VM written in C, [vm.c](./vm.c). I didn't try to optimize anything,
-but it still runs about 30 times faster than the Python version.
+I also threw together a VM in C, [vm.c](./vm.c). I didn't try to optimize
+anything, but it still runs over an order of magnitude faster than the Python
+version.
 
 Simply compiles with gcc. No special flags or std lib version.
 
-Be sure to run the Python [robots-bytecode.py](./robots-bytecode.py) first, as that
-contains the compiler that compiles and writes all the bytecode files (they end
-in `.oof`).
+Be sure to run the Python [robots-bytecode.py](./robots-bytecode.py) first, as
+that contains the compiler that compiles and writes all the bytecode files
+(they end in `.oof`).
 
-Same example as in the previous section, but here's the full bytecode listing this time:
+Same example as in the previous section. Here's the full bytecode listing. More
+than half of it is initial memory state.
 
 ```
 >  hexdump -C test_room_4.oof
@@ -494,12 +495,14 @@ Elapsed CPU time: 12 µs.
 
 ## More to do?
 
-There are probably plenty of other ways to make other optimizations, in addition to
-the ones suggested above, with further pre-processing passes.
-But I'm not going to try to figure them out right now because
-I think I'm done being nerd-sniped by this.
+This was fun.
 
-For now.
+There are probably plenty of other ways to make other optimizations and
+elaborations, in addition to the ones suggested above. It would be interesting
+to explore what happens when robots don't only modify each other's data but
+mutate each other's source code directly. This would pose some very interesting
+challenges to a bytecode compiler! I'm going to take a break from this for now,
+though. Hopefully in the future we can play more with it.
 
 - Jed
  
