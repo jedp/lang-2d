@@ -40,11 +40,10 @@ class TokenType(IntEnum):
 
 class ByteCode(IntEnum):
     OP_HALT = 0
-    OP_LOAD = 1
-    OP_STORE = 2
-    OP_STACK = 3
-    OP_JMP = 4
-    OP_JZ = 5
+    OP_BYTE = 1
+    OP_STACK = 2
+    OP_JMP = 3
+    OP_JZ = 4
     OP_PUSH = 8  # Create no opcodes with higher number
 
 
@@ -214,10 +213,11 @@ def bytecode_name(byte: int, next_byte: int = -1) -> str:
     match op:
         case ByteCode.OP_HALT:
             return f"[{byte:02x}] HALT"
-        case ByteCode.OP_LOAD:
-            return f"[{byte:02x}] LOAD"
-        case ByteCode.OP_STORE:
-            return f"[{byte:02x}] STORE"
+        case ByteCode.OP_BYTE:
+            if arg == 1:
+                return f"[{byte:02x}] WRITE"
+            else:
+                return f"[{byte:02x}] READ"
         case ByteCode.OP_STACK:
             match arg:
                 case StackOp.STACK_SUB:
@@ -515,10 +515,10 @@ class Compiler:
                     path.append(make_byte(ByteCode.OP_STACK, stack_op.value))
 
                 elif token.type == TokenType.T_READ_BYTE:
-                    path.append(make_byte(ByteCode.OP_LOAD))
+                    path.append(make_byte(ByteCode.OP_BYTE, 0))
 
                 elif token.type == TokenType.T_WRITE_BYTE:
-                    path.append(make_byte(ByteCode.OP_STORE))
+                    path.append(make_byte(ByteCode.OP_BYTE, 1))
 
                 elif token.type == TokenType.T_NOP:
                     pass
@@ -767,11 +767,11 @@ class VirtualMachine:
                             proc.stopped = True
                             running_processes.remove(proc)
 
-                        case ByteCode.OP_LOAD:
-                            self._load_byte(proc)
-
-                        case ByteCode.OP_STORE:
-                            self._store_byte(proc)
+                        case ByteCode.OP_BYTE:
+                            if arg == 1:
+                                self._store_byte(proc)
+                            else:
+                                self._load_byte(proc)
 
                         case ByteCode.OP_STACK:
                             proc.stack.op(arg)
