@@ -243,7 +243,7 @@ and portable. Fun!
 ### Bytecode
 
 The bytecode instruction set ends up being very tidy and compact, with just
-seven instructions.
+six instructions.
 
 The opcode can typically be stored in the high four bits of the byte, with an
 argument in the lower four bits.
@@ -252,18 +252,13 @@ argument in the lower four bits.
 
   Halt execution, but don't delete any state.
 
-- `LOAD`
+- `BYTE`
 
-  Read a "byte" off the floor and push its value on the stack. Takes
-  Four stack arguments to compute location and direction of writing.
-
-- `STORE`
- 
-  Pop a value from the stack and write it as a "byte" on the floor.
-  Takes five stack arguments: The value, and the location/direction
-  parameters.
-
-  I guess `LOAD` and `STORE` could be folded into a single opcode as well.
+  Read or write a "byte" off the floor, taking its value from the stack or pushing
+  it there. Reading takes four stack arguments to compute location and direction
+  of writing. Writing takes five stack arguments: The value, and the four
+  location/direction parameters. Read vs write is specified by the argument
+  half of the byte.
 
 - `STACK`
 
@@ -431,18 +426,18 @@ The python [Virtual Machine](./robots-bytecode.py) output for
 
 ```
 == Executing bytecode for TEST_ROOM_4.txt
-Loaded 327 bytes: 74 69 68 63 1 0 3 2 55 138 2 92 13 129 185 129 186 79 19 58 129 192 48 58 95 28 79 19 56 79 31 57 58 95 38 50 79 31 56 58 58 130 112 130 110 130 108 50 50 51 130 100 130 99 130 98 130 97 32 58 130 152 130 154 130 156 50 50 52 130 164 130 165 130 166 130 167 32 130 224 130 222 130 221 130 220 130 219 32 130 205 0 128 172 95 136 129 30 129 32 129 33 129 34 129 35 32 129 97 129 96 129 95 129 94 16 129 91 129 90 129 89 129 88 16 129 85 129 84 129 83 50 50 50 49 0 79 92 0 0 0 0 1 0 0 2 0 0 3 0 0 4 0 0 5 0 0 6 0 0 7 0 0 55 0 0 56 0 0 57 0 0 58 0 0 59 0 0 60 0 0 61 0 0 62 0 0 165 0 0 166 0 0 167 0 0 168 0 0 169 0 0 170 0 0 171 0 0 172 0 1 30 0 1 32 0 1 33 3 1 34 1 1 35 0 1 83 4 1 84 8 1 85 8 1 88 0 1 89 1 1 90 1 1 91 0 1 94 0 1 95 1 1 96 0 1 97 0 1 185 0 1 186 6 1 192 1 2 97 0 2 98 1 2 99 1 2 100 0 2 108 4 2 110 8 2 112 8 2 152 8 2 154 8 2 156 4 2 164 0 2 165 0 2 166 1 2 167 0 2 205 0 2 219 0 2 220 1 2 221 3 2 222 0 2 224 1
+Loaded 327 bytes: 74 69 68 63 1 0 3 2 55 138 2 92 13 129 185 129 186 63 19 42 129 192 32 42 79 28 63 19 40 63 31 41 42 79 38 34 63 31 40 42 42 130 112 130 110 130 108 34 34 35 130 100 130 99 130 98 130 97 17 42 130 152 130 154 130 156 34 34 36 130 164 130 165 130 166 130 167 17 130 224 130 222 130 221 130 220 130 219 17 130 205 0 128 172 79 136 129 30 129 32 129 33 129 34 129 35 17 129 97 129 96 129 95 129 94 16 129 91 129 90 129 89 129 88 16 129 85 129 84 129 83 34 34 34 33 0 63 92 0 0 0 0 1 0 0 2 0 0 3 0 0 4 0 0 5 0 0 6 0 0 7 0 0 55 0 0 56 0 0 57 0 0 58 0 0 59 0 0 60 0 0 61 0 0 62 0 0 165 0 0 166 0 0 167 0 0 168 0 0 169 0 0 170 0 0 171 0 0 172 0 1 30 0 1 32 0 1 33 3 1 34 1 1 35 0 1 83 4 1 84 8 1 85 8 1 88 0 1 89 1 1 90 1 1 91 0 1 94 0 1 95 1 1 96 0 1 97 0 1 185 0 1 186 6 1 192 1 2 97 0 2 98 1 2 99 1 2 100 0 2 108 4 2 110 8 2 112 8 2 152 8 2 154 8 2 156 4 2 164 0 2 165 0 2 166 1 2 167 0 2 205 0 2 219 0 2 220 1 2 221 3 2 222 0 2 224 1
 VM Starting. Processes: 2.
 [proc1] 005b Halt after 204 ticks.
 [proc1] Stack top: 0
 [proc0] 0087 Halt after 230 ticks.
 [proc0] Stack top: 720
-== Done with TEST_ROOM_4.txt in 0.2391ms
+== Done with TEST_ROOM_4.txt in 0.2011ms
 ```
 
 The value we want (720) is on top of the stack of process 0.
 
-That's 0.2391ms on my old-ish 2.4GHz Intel Mac.
+That's 0.2011ms on my old-ish 2.4GHz Intel Mac.
 
 ### Another Bytecode Example
 
@@ -462,14 +457,14 @@ than half of it is initial memory state.
 ```
 >  hexdump -C test_room_4.oof
 00000000  4a 45 44 3f 01 00 03 02  37 8a 02 5c 0d 81 b9 81  |JED?....7..\....|
-00000010  ba 4f 13 3a 81 c0 30 3a  5f 1c 4f 13 38 4f 1f 39  |.O.:..0:_.O.8O.9|
-00000020  3a 5f 26 32 4f 1f 38 3a  3a 82 70 82 6e 82 6c 32  |:_&2O.8::.p.n.l2|
-00000030  32 33 82 64 82 63 82 62  82 61 20 3a 82 98 82 9a  |23.d.c.b.a :....|
-00000040  82 9c 32 32 34 82 a4 82  a5 82 a6 82 a7 20 82 e0  |..224........ ..|
-00000050  82 de 82 dd 82 dc 82 db  20 82 cd 00 80 ac 5f 88  |........ ....._.|
-00000060  81 1e 81 20 81 21 81 22  81 23 20 81 61 81 60 81  |... .!.".# .a.`.|
+00000010  ba 3f 13 2a 81 c0 20 2a  4f 1c 3f 13 28 3f 1f 29  |.?.*.. *O.?.(?.)|
+00000020  2a 4f 26 22 3f 1f 28 2a  2a 82 70 82 6e 82 6c 22  |*O&"?.(**.p.n.l"|
+00000030  22 23 82 64 82 63 82 62  82 61 11 2a 82 98 82 9a  |"#.d.c.b.a.*....|
+00000040  82 9c 22 22 24 82 a4 82  a5 82 a6 82 a7 11 82 e0  |..""$...........|
+00000050  82 de 82 dd 82 dc 82 db  11 82 cd 00 80 ac 4f 88  |..............O.|
+00000060  81 1e 81 20 81 21 81 22  81 23 11 81 61 81 60 81  |... .!.".#..a.`.|
 00000070  5f 81 5e 10 81 5b 81 5a  81 59 81 58 10 81 55 81  |_.^..[.Z.Y.X..U.|
-00000080  54 81 53 32 32 32 31 00  4f 5c 00 00 00 00 01 00  |T.S2221.O\......|
+00000080  54 81 53 22 22 22 21 00  3f 5c 00 00 00 00 01 00  |T.S"""!.?\......|
 00000090  00 02 00 00 03 00 00 04  00 00 05 00 00 06 00 00  |................|
 000000a0  07 00 00 37 00 00 38 00  00 39 00 00 3a 00 00 3b  |...7..8..9..:..;|
 000000b0  00 00 3c 00 00 3d 00 00  3e 00 00 a5 00 00 a6 00  |..<..=..>.......|

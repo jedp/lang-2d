@@ -15,11 +15,10 @@ uint8_t heap[MEM_MAX];
 
 typedef enum {
     OP_HALT = 0,
-    OP_LOAD = 1,
-    OP_STORE = 2,
-    OP_STACK = 3,
-    OP_JMP = 4,
-    OP_JZ = 5,
+    OP_BYTE = 1,
+    OP_STACK = 2,
+    OP_JMP = 3,
+    OP_JZ = 4,
     OP_PUSH = 8,
 } op_t;
 
@@ -265,11 +264,12 @@ static err_t next_tick(robot_t *robot) {
             case OP_HALT:
                 robot->running = 0;
                 break;
-            case OP_LOAD:
-                err = read_byte(robot);
-                break;
-            case OP_STORE:
-                err = write_byte(robot);
+            case OP_BYTE:
+                if (arg == 0x1) {
+                    err = write_byte(robot);
+                } else {
+                    err = read_byte(robot);
+                }
                 break;
             case OP_STACK:
                 err |= handle_stack_op(robot, arg);
