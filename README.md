@@ -12,56 +12,55 @@ Includes:
 ## Background: Interview Question
 
 This started as an innocent interview question. I won't go into the prompt and
-detailed steps, but in its essentials, the interview question I've been using
-for years guides you in creating a make-believe robot that rolls around on a
-floor, interpreting and reacting to characters drawn on the floor as it drives
-over them. There are arrow characters to make the robot rotate, digits and
-arithmetic symbols to cause the robot to perform stack-based arithmetic
-operations, etc. In the end, you've made something like an adorable Befunge
-interpreter.
+detailed steps, but in its essentials, it guides you in creating a make-believe
+robot that rolls around on a floor, interpreting and reacting to characters
+drawn on the floor as it drives over them. There are arrow-like characters to
+make the robot rotate, digits and arithmetic symbols to cause the robot to
+perform stack-based arithmetic operations, etc. In the end, you've made
+something like an adorable Befunge interpreter.
 
-I like the question because it has multiple steps that flow into each other,
-getting progressively more complicated. There are no "aha" or gotcha moments
-and no special algorithms you have to know. There are many ways to think about
-the solution, either with functional or object-oriented patterns, and with
-architectures ranging from game development to parsers and interpreters. In the
-process, you get to see a lot of the candidate's approach to a problem,
-awareness of edge cases, approaches to design and architecture, modularity and
-structure, defensive fail-fast programming, etc.
+As an interview question, I like it because it has multiple steps that flow
+into each other, getting progressively more complicated. There are no "aha" or
+gotcha moments and no special algorithms you have to know. There are many ways
+to think about the solution, with more or less functional or object-oriented
+patterns, and with architectures ranging from game engines to parsers and
+interpreters. In the process, you get to see a lot of the candidate's approach
+to a problem, awareness of edge cases, approaches to design and architecture,
+modularity and structure, defensive fail-fast programming, etc.
 
-As a quick example, 
+Here's a quick summary of some of the key instructions for the robot:
 
 - `@` means halt
 
-- `>`, `^`, `<`, `v` mean rotate
+- `>`, `^`, `<`, `v` mean face left, up, etc.
 
 - `0`, `1`, ... `9` mean push a value on the stack
 
 - `-` means do subtraction on the stack
 
-- `_` is a conditional: Pop stack; if 0, face right, else face left.
+- `_` is a conditional: Pop stack; if popped 0, face right, else face left.
 
 - After interpreting a character, move forward one space (except after halt, of course)
 
 
-So if you start in the upper-left of the following map, you follow the arrows
-and calculate `8 5 - 1 -` (2), before landing on `@` and halting.
+In the  map below, if you start in the upper-left and follow the arrows, you
+calculate `8 5 - 1 -` (2), before landing on `@` and halting.
 
-> ```
-> > 8     v
->   >  @  5
->   ^ -1 -<
-> ```
+```
+> 8     v
+  >  @  5
+  ^ -1 -<
+```
 
-This one uses the conditional instruction to decide when to break out of loops.
-The program computes 5 factorial:
+The next one uses the conditional instruction to decide when to break out of loops.
+(The program computes 5 factorial.)
 
 ```
 05 > : 1- : v   v *  _ ! @
    ^        _ ! > $: ^    
 ```
 
-For an example Python interpreter, see:
+For an example Python interpreter that goes into more detail, see:
 
 - [robots-interpreter.py](robots-interpreter.py)
 
@@ -101,13 +100,20 @@ instructions.
 
   Note that the stack contains ints, not bytes, so you have to mask and shift
   the byte you want using stack arithmetic.
+
+  The `[dx] [dy]` vector leaves open the possibility that you could read/write
+  at odd angles and extents, potentially bouncing off the wall upon reaching
+  the edge of the room. My interpreter doesn't handle this in a well-defined
+  way. It's one more thing you could take in a creative direction.
  
 - A comment character `;` that means "ignore everything from here to the right
-  edge". (They have the downside of bloating the input size, which will have
-  consequences in the future, but for now let's just live with it.)
+  edge". These programs are still not easy for me to read quickly, so I wanted
+  to be able to leave comments. The downside is that the comment text bloats
+  the input size. This will have consequences in the future, but for now let's
+  just live with it.
 
-With this, we can evaluate the following room with two concurrently executing
-robots:
+With this, and ignoring the idea of collisions (blocking? resource contention?)
+we can evaluate the following room with two concurrently executing robots:
 
 - [Test Room 4](TEST_ROOM_4.txt)
 
@@ -143,7 +149,8 @@ So Robot 1 sets a flag when it's done, and Robot 0 reads and clears the flag,
 gets the shared memory value, and pushes it on its own stack.
 
 Here's how that room plays out on my machine. The interpreter prints the room
-every time a robot is done, so you can see how the "bytes" evolve:
+every time a robot is done, so you can see how the "bytes" in the upper left
+evolve:
 
 ```
 == Entering room: TEST_ROOM_4.txt
@@ -199,7 +206,8 @@ could we condense these programs into bytecode and write a virtual machine to
 run them on any platform?
 
 One immediate benefit of the bytecode would be to optimize out no-op spaces and
-useless turns. For example, consider the following basic room:
+useless turns that are the bulk of the program and largely what the interpreter
+spends time processing. For example, consider the following basic room:
 
 ```
 E       v
@@ -236,8 +244,12 @@ This should compile to something like the following:
 5  HALT
 ```
 
-So this is all looking like bytecode is going to make things so neat and tidy
-and portable. Fun!
+Thinking of turns like jump targets, and the space before a turn as a jump to
+that target, we should be able to reduce consecutive jumps that do nothing but
+move the program counter forward. (If a turn can be reached from multiple
+paths, as for example after a conditional in the room that calculates
+factorials, we can't simply reduce it in the same way. This will be relevant
+later on.)
 
 
 ### Bytecode
@@ -276,6 +288,10 @@ argument in the lower four bits.
   stored in the lower four bits. If greater, the lower four bits are set to 15
   and the next byte contains the offset.
 
+  (This could be improved: If the offset is less than 15, jump relative to
+  current program counter; otherwise jump to the code address of the next
+  byte.)
+
 - `JZ`
  
   Same offset encoding as `JMP`. Pops a value from the stack and jumps to one
@@ -283,17 +299,18 @@ argument in the lower four bits.
 
 - `PUSH`
 
-  This is the only opcode with the high bit set. The address in memory of the
-  value to push is the remaining 7 bits from the PUSH opcode (high byte) and
-  the following opcode (low byte).
+  Based on experience, this is the most-commonly used instruction, so it makes
+  sense to try to optimize a bit on space here. This is the only opcode with
+  the high bit set: The address in memory of the value to push is the remaining
+  7 bits from the PUSH opcode (high byte) and the following opcode (low byte).
 
   For example the opcode sequence `0xe1 0x64` means "PUSH value at memory
   address `0x0164`".
 
   (When I first put this together, I tried saving a byte of opcodes by using
   all pointer references to the stack. Saving a byte is nice, but requiring
-  pointer indirection for all memory lookups is pretty gross, so I've added
-  an extra address byte for all PUSHes.)
+  pointer indirection for all memory lookups is a pretty high cost. For this
+  reason, I've added an extra address byte for all PUSHes.)
 
 
 ### Further Room for Improvement
@@ -311,7 +328,7 @@ I agree. I'm not sure how to go about this, though. There might be a way to
 optimize constant expressions out, but more "realistic" programs have
 conditionals and memory value mutations. And since all expressions can be
 computed at runtime, it's challenging to figure out which expressions will be
-constant and which will be mutable.
+constant and which will be mutable. Too big a challenge for me right now.
 
 Another problem that arises when we compile down to bytecode is that we lose
 the geometric information of the original grid. How do we know where `(1,1)` is
@@ -329,12 +346,11 @@ Here's a compiler and virtual machine:
 
 - [robots-bytecode.py](robots-bytecode.py)
 
-Compile this room:
+Compile the room that computes 5 factorial:
 
 ```
-E8      v
-  >  @  5
-  ^ -1 -<
+E05 > : 1- : v   v *  _ ! @
+    ^        _ ! > $: ^    
 ```
 
 Get this bytecode:
@@ -350,11 +366,11 @@ Get this bytecode:
 0005	00
 	:memory length (int16)
 0006	00
-0007	1b
+0007	36
 	:memory stride
-0008	09
+0008	1b
 	:data segment offset
-0009	12
+0009	27
 	:entry points
 000a	01
 	:entry point offsets
@@ -362,17 +378,32 @@ Get this bytecode:
 
 	:code
 000c	[80] PUSH 00 01
-000e	[80] PUSH 00 11
-0010	[30] SUB
-0011	[80] PUSH 00 17
-0013	[30] SUB
-0014	[00] HALT
+000e	[80] PUSH 00 02
+0011	[3f] JUMP 12
+0012	[2a] DUP
+0013	[80] PUSH 00 08
+0015	[20] SUB
+0016	[2a] DUP
+0018	[4f] JZ 1b
+001a	[3f] JUMP 12
+001b	[28] POP
+001d	[3f] JUMP 1e
+001e	[29] SWAP
+001f	[2a] DUP
+0021	[4f] JZ 25
+0022	[22] MUL
+0024	[3f] JUMP 1e
+0025	[28] POP
+0026	[00] HALT
 
 	:data
-0012	0001 = 08
-0015	0011 = 05
-0018	0017 = 01
+0027	0001 = 00
+002a	0002 = 05
+002d	0008 = 01
 ```
+
+(Hmm ... It looks like that `JUMP 1e` at address `1d` can be optimized out. I
+guess there's room for improvement in the path-reduction logic.)
 
 You can read the generated bytecode for each room and compare with the
 interpreter in the attached `output` files.
@@ -441,7 +472,8 @@ That's 0.2011ms on my old-ish 2.4GHz Intel Mac.
 
 ### Another Bytecode Example
 
-I also threw together a VM in C, [vm.c](./vm.c). I didn't try to optimize
+I also threw together a VM in C, [vm.c](./vm.c). (Why write a bytecode compiler
+without writing a VM in a different language?) I didn't try to optimize
 anything, but it still runs over an order of magnitude faster than the Python
 version.
 
@@ -490,14 +522,14 @@ Elapsed CPU time: 12 µs.
 
 ## More to do?
 
-This was fun.
+This was fun. And really captivated my mind. Thanks again, Chris. I guess.
 
 There are probably plenty of other ways to make other optimizations and
 elaborations, in addition to the ones suggested above. It would be interesting
 to explore what happens when robots don't only modify each other's data but
 mutate each other's source code directly. This would pose some very interesting
 challenges to a bytecode compiler! I'm going to take a break from this for now,
-though. Hopefully in the future we can play more with it.
+though. Perhaps in the future we can play more with it.
 
 - Jed
  
