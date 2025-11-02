@@ -5,6 +5,7 @@
 
 #define CODE_MAX (1024)
 #define MEM_MAX (4096)
+#define STACK_MAX (256)
 
 uint8_t magic[] = {'J', 'E', 'D', '?'};
 uint8_t version[] = {1, 0};
@@ -43,7 +44,9 @@ typedef enum {
     ERR_NOT_SUPPORTED,
     ERR_NOT_RUNNING,
     ERR_RUNTIME_STACK_UNDERFLOW,
+    ERR_RUNTIME_STACK_OVERFLOW,
     ERR_RUNTIME_DIVISION_BY_ZERO,
+    ERR_RUNTIME_OUT_OF_BOUNDS,
 } err_t;
 
 typedef struct {
@@ -82,18 +85,14 @@ static err_t init_heap(vm_t *vm, int code_sz) {
 static err_t init_vm(vm_t *vm, int code_sz) {
     err_t err = ERR_NO_ERROR;
 
-    // clang-format off
-    // @formatter:off
     if (!vm) return ERR_BAD_INPUT;
-    if (code_sz < 12)              { printf("Input buffer too short. Not even worth trying.\n"); return ERR_BAD_INPUT; }
-    if (bytecode[0] != magic[0])   { printf("Bad magic.\n"); return ERR_BAD_INPUT; }
-    if (bytecode[1] != magic[1])   { printf("Bad magic.\n"); return ERR_BAD_INPUT; }
-    if (bytecode[2] != magic[2])   { printf("Bad magic.\n"); return ERR_BAD_INPUT; }
-    if (bytecode[3] != magic[3])   { printf("Bad magic.\n"); return ERR_BAD_INPUT; }
+    if (code_sz < 12) { printf("Input buffer too short. Not even worth trying.\n"); return ERR_BAD_INPUT; }
+    if (bytecode[0] != magic[0]) { printf("Bad magic.\n"); return ERR_BAD_INPUT; }
+    if (bytecode[1] != magic[1]) { printf("Bad magic.\n"); return ERR_BAD_INPUT; }
+    if (bytecode[2] != magic[2]) { printf("Bad magic.\n"); return ERR_BAD_INPUT; }
+    if (bytecode[3] != magic[3]) { printf("Bad magic.\n"); return ERR_BAD_INPUT; }
     if (bytecode[4] != version[0]) { printf("Bad version.\n"); return ERR_BAD_INPUT; }
     if (bytecode[5] != version[1]) { printf("Bad version.\n"); return ERR_BAD_INPUT; }
-    // @formatter:on
-    // clang-format on
 
     uint16_t data_seg = bytecode[9];
     uint16_t code_size = data_seg - 11 - bytecode[11];
@@ -111,7 +110,7 @@ static err_t init_vm(vm_t *vm, int code_sz) {
 
     for (int i = 0; i < vm->n_robots; i++) {
         robot_t *robot = malloc(sizeof(robot_t));
-        robot->stack = malloc(sizeof(int) * mem_size);
+        robot->stack = malloc(sizeof(int) * STACK_MAX);
         robot->running = 0;
         robot->entry_point = bytecode[11 + i];
         robot->pc = bytecode[11 + i];
@@ -129,13 +128,13 @@ static err_t destroy(vm_t *vm) {
 
     for (int i = 0; i < vm->n_robots; i++) {
         robot_t *robot = vm->robots[i];
-        free(robot->stack);
-        robot->stack = NULL;
-        free(robot);
+        if (robot) {
+            free(robot->stack);
+            free(robot);
+        }
     }
 
     free(vm);
-    vm = NULL;
     return ERR_NO_ERROR;
 }
 
@@ -143,33 +142,47 @@ static err_t handle_stack_op(robot_t *robot, stack_op_t op) {
     err_t err = ERR_NO_ERROR;
 
     if (op == ST_POP) {
+        if (robot->sp <= 0) {
+            return ERR_RUNTIME_STACK_UNDERFLOW;
+        }
         --robot->sp;
         return ERR_NO_ERROR;
     }
 
     // Remaining ops require one thing on the stack.
-    if (robot->sp < 0) {
+    if (robot->sp <= 0) {
         return ERR_RUNTIME_STACK_UNDERFLOW;
     }
 
     if (op == ST_DUP) {
+        if (robot->sp >= STACK_MAX) {
+            return ERR_RUNTIME_STACK_OVERFLOW;
+        }
         int top = robot->stack[robot->sp - 1];
         robot->stack[robot->sp++] = top;
         return ERR_NO_ERROR;
     } else if (op == ST_NOT) {
         robot->stack[robot->sp - 1] = ~robot->stack[robot->sp - 1];
+        return ERR_NO_ERROR;
     }
 
     // Remaining ops require two things on the stack.
-    if (robot->sp < 1) {
+    if (robot->sp < 2) {
         return ERR_RUNTIME_STACK_UNDERFLOW;
     }
 
     int a = robot->stack[--robot->sp];
     int b = robot->stack[--robot->sp];
 
+    if (robot->sp >= STACK_MAX) {
+        return ERR_RUNTIME_STACK_OVERFLOW;
+    }
+
     switch (op) {
         case ST_SWAP:
+            if (robot->sp + 1 >= STACK_MAX) {
+                return ERR_RUNTIME_STACK_OVERFLOW;
+            }
             robot->stack[robot->sp++] = a;
             robot->stack[robot->sp++] = b;
             break;
@@ -208,6 +221,10 @@ static err_t handle_stack_op(robot_t *robot, stack_op_t op) {
 }
 
 static err_t write_byte(robot_t *robot) {
+    if (robot->sp < 5) {
+        return ERR_RUNTIME_STACK_UNDERFLOW;
+    }
+
     int dy = robot->stack[--robot->sp];
     int dx = robot->stack[--robot->sp];
     int y = robot->stack[--robot->sp];
@@ -215,7 +232,16 @@ static err_t write_byte(robot_t *robot) {
     int v = robot->stack[--robot->sp];
 
     for (int i = 0; i < 8; i++) {
+        // Strict bounds check - error on out-of-bounds access
+        if (x < 0 || y < 0 || x >= robot->stride || y >= (MEM_MAX / robot->stride)) {
+            return ERR_RUNTIME_OUT_OF_BOUNDS;
+        }
+
         uint16_t offset = x + y * robot->stride;
+        if (offset >= MEM_MAX) {
+            return ERR_RUNTIME_OUT_OF_BOUNDS;
+        }
+
         heap[offset] = (v >> (7 - i)) & 0x1;
         y += dy;
         x += dx;
@@ -225,6 +251,10 @@ static err_t write_byte(robot_t *robot) {
 }
 
 static err_t read_byte(robot_t *robot) {
+    if (robot->sp < 4) {
+        return ERR_RUNTIME_STACK_UNDERFLOW;
+    }
+
     int dy = robot->stack[--robot->sp];
     int dx = robot->stack[--robot->sp];
     int y = robot->stack[--robot->sp];
@@ -232,16 +262,83 @@ static err_t read_byte(robot_t *robot) {
     int v = 0;
 
     for (int i = 0; i < 8; i++) {
+        // Strict bounds check - error on out-of-bounds access
+        if (x < 0 || y < 0 || x >= robot->stride || y >= (MEM_MAX / robot->stride)) {
+            return ERR_RUNTIME_OUT_OF_BOUNDS;
+        }
+
         uint16_t offset = x + y * robot->stride;
+        if (offset >= MEM_MAX) {
+            return ERR_RUNTIME_OUT_OF_BOUNDS;
+        }
+
         uint8_t bit = heap[offset];
         v |= (bit << (7 - i));
         y += dy;
         x += dx;
     }
 
+    if (robot->sp >= STACK_MAX) {
+        return ERR_RUNTIME_STACK_OVERFLOW;
+    }
     robot->stack[robot->sp++] = v;
 
     return ERR_NO_ERROR;
+}
+
+static void disassemble_instruction(int pc, uint8_t opcode) {
+    uint8_t op = (opcode >> 4) & 0xf;
+    uint8_t arg = opcode & 0xf;
+
+    printf("  %04d: 0x%02x ", pc, opcode);
+
+    if (op & OP_PUSH) {
+        uint16_t addr = ((opcode & 0x7f) << 8) | (bytecode[pc + 1]);
+        printf("PUSH [0x%04x]\n", addr);
+    } else {
+        switch (op) {
+            case OP_HALT:
+                printf("HALT\n");
+                break;
+            case OP_BYTE:
+                printf("BYTE %s\n", (arg == 0x1) ? "WRITE" : "READ");
+                break;
+            case OP_STACK:
+                printf("STACK ");
+                switch (arg) {
+                    case ST_SUB: printf("SUB\n"); break;
+                    case ST_ADD: printf("ADD\n"); break;
+                    case ST_MUL: printf("MUL\n"); break;
+                    case ST_DIV: printf("DIV\n"); break;
+                    case ST_MOD: printf("MOD\n"); break;
+                    case ST_AND: printf("AND\n"); break;
+                    case ST_OR: printf("OR\n"); break;
+                    case ST_NOT: printf("NOT\n"); break;
+                    case ST_POP: printf("POP\n"); break;
+                    case ST_SWAP: printf("SWAP\n"); break;
+                    case ST_DUP: printf("DUP\n"); break;
+                    default: printf("UNKNOWN(%d)\n", arg); break;
+                }
+                break;
+            case OP_JMP:
+                if (arg != 0xf) {
+                    printf("JMP %d\n", arg);
+                } else {
+                    printf("JMP %d\n", bytecode[pc + 1]);
+                }
+                break;
+            case OP_JZ:
+                if (arg != 0xf) {
+                    printf("JZ %d\n", arg);
+                } else {
+                    printf("JZ %d\n", bytecode[pc + 1]);
+                }
+                break;
+            default:
+                printf("UNKNOWN_OP(0x%02x)\n", op);
+                break;
+        }
+    }
 }
 
 static err_t next_tick(robot_t *robot) {
@@ -250,12 +347,25 @@ static err_t next_tick(robot_t *robot) {
         return ERR_NOT_RUNNING;
     }
 
+    if (robot->pc < 0 || robot->pc >= CODE_MAX) {
+        return ERR_BAD_INPUT;
+    }
+
     uint8_t opcode = bytecode[robot->pc];
     uint8_t op = (opcode >> 4) & 0xf;
     uint8_t arg = opcode & 0xf;
 
     if (op & OP_PUSH) {
+        if (robot->pc + 1 >= CODE_MAX) {
+            return ERR_BAD_INPUT;
+        }
+        if (robot->sp >= STACK_MAX) {
+            return ERR_RUNTIME_STACK_OVERFLOW;
+        }
         uint16_t addr = ((opcode & 0x7f) << 8) | (bytecode[robot->pc + 1]);
+        if (addr >= MEM_MAX) {
+            return ERR_BAD_INPUT;
+        }
         robot->stack[robot->sp++] = heap[addr];
         // Skip over next byte.
         robot->pc++;
@@ -279,6 +389,9 @@ static err_t next_tick(robot_t *robot) {
                 if (arg != 0xf) {
                     target = arg;
                 } else {
+                    if (robot->pc + 1 >= CODE_MAX) {
+                        return ERR_BAD_INPUT;
+                    }
                     target = bytecode[++robot->pc];
                 }
 
@@ -287,10 +400,16 @@ static err_t next_tick(robot_t *robot) {
                 break;
             }
             case OP_JZ: {
+                if (robot->sp <= 0) {
+                    return ERR_RUNTIME_STACK_UNDERFLOW;
+                }
                 uint16_t target;
                 if (arg != 0xf) {
                     target = arg;
                 } else {
+                    if (robot->pc + 1 >= CODE_MAX) {
+                        return ERR_BAD_INPUT;
+                    }
                     target = bytecode[++robot->pc];
                 }
                 if (robot->stack[--robot->sp] == 0) {
@@ -300,8 +419,8 @@ static err_t next_tick(robot_t *robot) {
                 break;
             }
             default:
-                printf("Unknown opcode: 0x%2x", op);
-                break;
+                printf("Unknown opcode: 0x%02x\n", op);
+                return ERR_BAD_INPUT;
         }
     }
 
@@ -348,8 +467,11 @@ static err_t exec(int sz) {
             if (robot->running) {
                 err = next_tick(robot);
                 if (err != ERR_NO_ERROR) {
-                    // TODO fun to have a disassembler here.
                     printf("Robot %d: Error %d! pc=%d, sp=%d\n", i, err, robot->pc, robot->sp);
+                    printf("Instruction causing error:\n");
+                    if (robot->pc >= 0 && robot->pc < CODE_MAX) {
+                        disassemble_instruction(robot->pc, bytecode[robot->pc]);
+                    }
                     goto done;
                 }
                 ticks++;
@@ -367,7 +489,7 @@ static err_t exec(int sz) {
         }
     }
 
-    done:
+done:
     clock_gettime(CLOCK_REALTIME, &end_ts);
     printf("Elapsed CPU time: %ld µs.\n", (end_ts.tv_nsec - start_ts.tv_nsec) / 1000);
     err |= destroy(vm);
@@ -394,11 +516,18 @@ int main(int argc, char **argv) {
     sz = ftell(fp);
     if (sz > CODE_MAX) {
         printf("Program too large.\n");
+        fclose(fp);
         return ERR_BAD_INPUT;
     }
     fseek(fp, 0L, SEEK_SET);
-    fread(&bytecode, sizeof(bytecode), 1, fp);
+
+    size_t bytes_read = fread(bytecode, 1, sz, fp);
     fclose(fp);
+
+    if (bytes_read != sz) {
+        printf("Failed to read complete file.\n");
+        return ERR_BAD_INPUT;
+    }
 
     err = exec((int) sz);
 
