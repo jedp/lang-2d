@@ -1,6 +1,7 @@
 .idea/
 
 *.oof
+vm
 
 pyenv/
 *.pyc
