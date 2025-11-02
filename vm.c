@@ -2,6 +2,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "time.h"
+#include "signal.h"
 
 #define CODE_MAX (1024)
 #define MEM_MAX (4096)
@@ -65,6 +66,28 @@ typedef struct {
     uint8_t n_robots;
     robot_t *robots[16];
 } vm_t;
+
+volatile sig_atomic_t should_exit = 0;
+
+static void signal_handler(int sig) {
+    switch (sig) {
+        case SIGINT:
+            printf("\nReceived SIGINT. Stopping VM...\n");
+            should_exit = 1;
+            break;
+        case SIGTERM:
+            printf("\nReceived SIGTERM. Stopping VM...\n");
+            should_exit = 1;
+            break;
+        default:
+            break;
+    }
+}
+
+static void setup_signal_handlers(void) {
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+}
 
 static err_t init_heap(vm_t *vm, int code_sz) {
     for (int i = 0; i < vm->mem_size; i++) {
@@ -458,7 +481,7 @@ static err_t exec(int sz) {
     clock_gettime(CLOCK_REALTIME, &start_ts);
 
     int ticks = 0;
-    while (running_robots) {
+    while (running_robots && !should_exit) {
         for (int i = 0; i < vm->n_robots; i++) {
             if (!((running_robots >> i) & 1)) {
                 continue;
@@ -490,6 +513,10 @@ static err_t exec(int sz) {
     }
 
 done:
+    if (should_exit) {
+        printf("VM interrupted after %d ticks.\n", ticks);
+    }
+
     clock_gettime(CLOCK_REALTIME, &end_ts);
     printf("Elapsed CPU time: %ld µs.\n", (end_ts.tv_nsec - start_ts.tv_nsec) / 1000);
     err |= destroy(vm);
@@ -500,6 +527,8 @@ done:
 int main(int argc, char **argv) {
     err_t err = ERR_NO_ERROR;
     size_t sz;
+
+    setup_signal_handlers();
 
     if (argc < 2) {
         printf("Usage: vm <filename>\n");
