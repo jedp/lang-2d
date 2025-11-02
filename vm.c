@@ -3,10 +3,7 @@
 #include "stdlib.h"
 #include "time.h"
 #include "signal.h"
-
-#define CODE_MAX (1024)
-#define MEM_MAX (4096)
-#define STACK_MAX (256)
+#include "vm.h"
 
 uint8_t magic[] = {'J', 'E', 'D', '?'};
 uint8_t version[] = {1, 0};
@@ -15,59 +12,157 @@ uint8_t version[] = {1, 0};
 uint8_t bytecode[CODE_MAX];
 uint8_t heap[MEM_MAX];
 
-typedef enum {
-    OP_HALT = 0,
-    OP_BYTE = 1,
-    OP_STACK = 2,
-    OP_JMP = 3,
-    OP_JZ = 4,
-    OP_PUSH = 8,
-} op_t;
-
-typedef enum {
-    ST_SUB = 0,
-    ST_ADD = 1,
-    ST_MUL = 2,
-    ST_DIV = 3,
-    ST_MOD = 4,
-    ST_AND = 5,
-    ST_OR = 6,
-    ST_NOT = 7,
-    ST_POP = 8,
-    ST_SWAP = 9,
-    ST_DUP = 10,
-} stack_op_t;
-
-typedef enum {
-    ERR_NO_ERROR,
-    ERR_INVALID_ARGUMENT,
-    ERR_BAD_INPUT,
-    ERR_NOT_SUPPORTED,
-    ERR_NOT_RUNNING,
-    ERR_RUNTIME_STACK_UNDERFLOW,
-    ERR_RUNTIME_STACK_OVERFLOW,
-    ERR_RUNTIME_DIVISION_BY_ZERO,
-    ERR_RUNTIME_OUT_OF_BOUNDS,
-} err_t;
-
-typedef struct {
-    int running;
-    int entry_point;
-    int pc;
-    int sp;
-    int stride;
-    int *stack;
-} robot_t;
-
-typedef struct {
-    uint16_t code_size;
-    uint16_t data_seg;
-    uint16_t mem_size;
-    uint8_t n_robots;
-    robot_t *robots[16];
-} vm_t;
-
 volatile sig_atomic_t should_exit = 0;
+
+err_t handle_stack_op(robot_t *robot, stack_op_t op) {
+    err_t err = ERR_NO_ERROR;
+
+    if (op == ST_POP) {
+        if (robot->sp <= 0) {
+            return ERR_RUNTIME_STACK_UNDERFLOW;
+        }
+        --robot->sp;
+        return ERR_NO_ERROR;
+    }
+
+    // Remaining ops require one thing on the stack.
+    if (robot->sp <= 0) {
+        return ERR_RUNTIME_STACK_UNDERFLOW;
+    }
+
+    if (op == ST_DUP) {
+        if (robot->sp >= STACK_MAX) {
+            return ERR_RUNTIME_STACK_OVERFLOW;
+        }
+        int top = robot->stack[robot->sp - 1];
+        robot->stack[robot->sp++] = top;
+        return ERR_NO_ERROR;
+    } else if (op == ST_NOT) {
+        robot->stack[robot->sp - 1] = ~robot->stack[robot->sp - 1];
+        return ERR_NO_ERROR;
+    }
+
+    // Remaining ops require two things on the stack.
+    if (robot->sp < 2) {
+        return ERR_RUNTIME_STACK_UNDERFLOW;
+    }
+
+    int a = robot->stack[--robot->sp];
+    int b = robot->stack[--robot->sp];
+
+    if (robot->sp >= STACK_MAX) {
+        return ERR_RUNTIME_STACK_OVERFLOW;
+    }
+
+    switch (op) {
+        case ST_SWAP:
+            if (robot->sp + 1 >= STACK_MAX) {
+                return ERR_RUNTIME_STACK_OVERFLOW;
+            }
+            robot->stack[robot->sp++] = a;
+            robot->stack[robot->sp++] = b;
+            break;
+        case ST_SUB:
+            robot->stack[robot->sp++] = b - a;
+            break;
+        case ST_ADD:
+            robot->stack[robot->sp++] = b + a;
+            break;
+        case ST_MUL:
+            robot->stack[robot->sp++] = b * a;
+            break;
+        case ST_DIV:
+            if (a == 0) {
+                return ERR_RUNTIME_DIVISION_BY_ZERO;
+            }
+            robot->stack[robot->sp++] = b / a;
+            break;
+        case ST_MOD:
+            if (a == 0) {
+                return ERR_RUNTIME_DIVISION_BY_ZERO;
+            }
+            robot->stack[robot->sp++] = b % a;
+            break;
+        case ST_AND:
+            robot->stack[robot->sp++] = b & a;
+            break;
+        case ST_OR:
+            robot->stack[robot->sp++] = b | a;
+            break;
+        default:
+            return ERR_BAD_INPUT;
+    }
+
+    return err;
+}
+
+err_t write_byte(robot_t *robot) {
+    if (robot->sp < 5) {
+        return ERR_RUNTIME_STACK_UNDERFLOW;
+    }
+
+    int dy = robot->stack[--robot->sp];
+    int dx = robot->stack[--robot->sp];
+    int y = robot->stack[--robot->sp];
+    int x = robot->stack[--robot->sp];
+    int v = robot->stack[--robot->sp];
+
+    for (int i = 0; i < 8; i++) {
+        // Strict bounds check - error on out-of-bounds access
+        if (x < 0 || y < 0 || x >= robot->stride || y >= (MEM_MAX / robot->stride)) {
+            return ERR_RUNTIME_OUT_OF_BOUNDS;
+        }
+
+        uint16_t offset = x + y * robot->stride;
+        if (offset >= MEM_MAX) {
+            return ERR_RUNTIME_OUT_OF_BOUNDS;
+        }
+
+        heap[offset] = (v >> (7 - i)) & 0x1;
+        y += dy;
+        x += dx;
+    }
+
+    return ERR_NO_ERROR;
+}
+
+err_t read_byte(robot_t *robot) {
+    if (robot->sp < 4) {
+        return ERR_RUNTIME_STACK_UNDERFLOW;
+    }
+
+    int dy = robot->stack[--robot->sp];
+    int dx = robot->stack[--robot->sp];
+    int y = robot->stack[--robot->sp];
+    int x = robot->stack[--robot->sp];
+    int v = 0;
+
+    for (int i = 0; i < 8; i++) {
+        // Strict bounds check - error on out-of-bounds access
+        if (x < 0 || y < 0 || x >= robot->stride || y >= (MEM_MAX / robot->stride)) {
+            return ERR_RUNTIME_OUT_OF_BOUNDS;
+        }
+
+        uint16_t offset = x + y * robot->stride;
+        if (offset >= MEM_MAX) {
+            return ERR_RUNTIME_OUT_OF_BOUNDS;
+        }
+
+        uint8_t bit = heap[offset];
+        v |= (bit << (7 - i));
+        y += dy;
+        x += dx;
+    }
+
+    if (robot->sp >= STACK_MAX) {
+        return ERR_RUNTIME_STACK_OVERFLOW;
+    }
+    robot->stack[robot->sp++] = v;
+
+    return ERR_NO_ERROR;
+}
+
+#ifndef TEST_BUILD
 
 static void signal_handler(int sig) {
     switch (sig) {
@@ -158,154 +253,6 @@ static err_t destroy(vm_t *vm) {
     }
 
     free(vm);
-    return ERR_NO_ERROR;
-}
-
-static err_t handle_stack_op(robot_t *robot, stack_op_t op) {
-    err_t err = ERR_NO_ERROR;
-
-    if (op == ST_POP) {
-        if (robot->sp <= 0) {
-            return ERR_RUNTIME_STACK_UNDERFLOW;
-        }
-        --robot->sp;
-        return ERR_NO_ERROR;
-    }
-
-    // Remaining ops require one thing on the stack.
-    if (robot->sp <= 0) {
-        return ERR_RUNTIME_STACK_UNDERFLOW;
-    }
-
-    if (op == ST_DUP) {
-        if (robot->sp >= STACK_MAX) {
-            return ERR_RUNTIME_STACK_OVERFLOW;
-        }
-        int top = robot->stack[robot->sp - 1];
-        robot->stack[robot->sp++] = top;
-        return ERR_NO_ERROR;
-    } else if (op == ST_NOT) {
-        robot->stack[robot->sp - 1] = ~robot->stack[robot->sp - 1];
-        return ERR_NO_ERROR;
-    }
-
-    // Remaining ops require two things on the stack.
-    if (robot->sp < 2) {
-        return ERR_RUNTIME_STACK_UNDERFLOW;
-    }
-
-    int a = robot->stack[--robot->sp];
-    int b = robot->stack[--robot->sp];
-
-    if (robot->sp >= STACK_MAX) {
-        return ERR_RUNTIME_STACK_OVERFLOW;
-    }
-
-    switch (op) {
-        case ST_SWAP:
-            if (robot->sp + 1 >= STACK_MAX) {
-                return ERR_RUNTIME_STACK_OVERFLOW;
-            }
-            robot->stack[robot->sp++] = a;
-            robot->stack[robot->sp++] = b;
-            break;
-        case ST_SUB:
-            robot->stack[robot->sp++] = b - a;
-            break;
-        case ST_ADD:
-            robot->stack[robot->sp++] = b + a;
-            break;
-        case ST_MUL:
-            robot->stack[robot->sp++] = b * a;
-            break;
-        case ST_DIV:
-            if (a == 0) {
-                return ERR_RUNTIME_DIVISION_BY_ZERO;
-            }
-            robot->stack[robot->sp++] = b / a;
-            break;
-        case ST_MOD:
-            if (a == 0) {
-                return ERR_RUNTIME_DIVISION_BY_ZERO;
-            }
-            robot->stack[robot->sp++] = b % a;
-            break;
-        case ST_AND:
-            robot->stack[robot->sp++] = b & a;
-            break;
-        case ST_OR:
-            robot->stack[robot->sp++] = b | a;
-            break;
-        default:
-            return ERR_BAD_INPUT;
-    }
-
-    return err;
-}
-
-static err_t write_byte(robot_t *robot) {
-    if (robot->sp < 5) {
-        return ERR_RUNTIME_STACK_UNDERFLOW;
-    }
-
-    int dy = robot->stack[--robot->sp];
-    int dx = robot->stack[--robot->sp];
-    int y = robot->stack[--robot->sp];
-    int x = robot->stack[--robot->sp];
-    int v = robot->stack[--robot->sp];
-
-    for (int i = 0; i < 8; i++) {
-        // Strict bounds check - error on out-of-bounds access
-        if (x < 0 || y < 0 || x >= robot->stride || y >= (MEM_MAX / robot->stride)) {
-            return ERR_RUNTIME_OUT_OF_BOUNDS;
-        }
-
-        uint16_t offset = x + y * robot->stride;
-        if (offset >= MEM_MAX) {
-            return ERR_RUNTIME_OUT_OF_BOUNDS;
-        }
-
-        heap[offset] = (v >> (7 - i)) & 0x1;
-        y += dy;
-        x += dx;
-    }
-
-    return ERR_NO_ERROR;
-}
-
-static err_t read_byte(robot_t *robot) {
-    if (robot->sp < 4) {
-        return ERR_RUNTIME_STACK_UNDERFLOW;
-    }
-
-    int dy = robot->stack[--robot->sp];
-    int dx = robot->stack[--robot->sp];
-    int y = robot->stack[--robot->sp];
-    int x = robot->stack[--robot->sp];
-    int v = 0;
-
-    for (int i = 0; i < 8; i++) {
-        // Strict bounds check - error on out-of-bounds access
-        if (x < 0 || y < 0 || x >= robot->stride || y >= (MEM_MAX / robot->stride)) {
-            return ERR_RUNTIME_OUT_OF_BOUNDS;
-        }
-
-        uint16_t offset = x + y * robot->stride;
-        if (offset >= MEM_MAX) {
-            return ERR_RUNTIME_OUT_OF_BOUNDS;
-        }
-
-        uint8_t bit = heap[offset];
-        v |= (bit << (7 - i));
-        y += dy;
-        x += dx;
-    }
-
-    if (robot->sp >= STACK_MAX) {
-        return ERR_RUNTIME_STACK_OVERFLOW;
-    }
-    robot->stack[robot->sp++] = v;
-
     return ERR_NO_ERROR;
 }
 
@@ -562,3 +509,4 @@ int main(int argc, char **argv) {
 
     return err;
 }
+#endif // TEST_BUILD
