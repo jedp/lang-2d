@@ -5,6 +5,35 @@ from enum import IntEnum
 from os import path
 from time import perf_counter
 
+
+# Custom exceptions
+class VMError(Exception):
+    pass
+
+
+class OutOfBoundsError(VMError):
+    pass
+
+
+class StackUnderflowError(VMError):
+    pass
+
+
+class DivisionByZeroError(VMError):
+    pass
+
+
+BYTE_SIZE = 8
+HIGHEST_BIT = 7
+MAX_NIBBLE = 15
+MAX_NIBBLE_HEX = 0xf
+MAX_LABELS = 255
+MAX_15BIT_ADDR = 32767
+PUSH_OPCODE_MASK = 0x80
+ADDR_7BIT_MASK = 0x7f
+ENTRY_POINTS_OFFSET = 11
+BYTE_MASK = 0xff
+
 magic: bytearray = bytearray(map(ord, "JED?"))
 version = [1, 0]
 
@@ -100,7 +129,7 @@ def lex_char(ch: str) -> Token:
     elif ch == '#':
         token_type = TokenType.T_WRITE_BYTE
     else:
-        raise ValueError(f"Cannot parse token: '{ch}")
+        raise ValueError(f"Cannot parse token: '{ch}'")
 
     return Token(token_type, ch)
 
@@ -149,9 +178,13 @@ class Stack:
         self.stack.append(val)
 
     def pop(self) -> int:
+        if self.is_empty():
+            raise StackUnderflowError("Stack is empty")
         return self.stack.pop()
 
     def peek(self) -> int:
+        if self.is_empty():
+            raise StackUnderflowError("Stack is empty")
         return self.stack[-1]
 
     def math(self, op: StackOp) -> None:
@@ -171,8 +204,12 @@ class Stack:
                 case StackOp.STACK_MUL:
                     self.push(b * a)
                 case StackOp.STACK_DIV:
+                    if a == 0:
+                        raise DivisionByZeroError("Cannot divide by zero")
                     self.push(b // a)
                 case StackOp.STACK_MOD:
+                    if a == 0:
+                        raise DivisionByZeroError("Cannot divide by zero")
                     self.push(b % a)
                 case StackOp.STACK_AND:
                     self.push(b & a)
@@ -194,9 +231,9 @@ class Stack:
 
 
 def make_byte(op: ByteCode, arg: int = 0) -> int:
-    if arg < 0 or arg > 15:
+    if arg < 0 or arg > MAX_NIBBLE:
         raise ValueError(f"Invalid op for bytecode: {arg}")
-    return (op.value << 4) | (arg & 0xff)
+    return (op.value << 4) | (arg & MAX_NIBBLE_HEX)
 
 
 def fmt_line(offset: int, text: any) -> str:
@@ -205,10 +242,10 @@ def fmt_line(offset: int, text: any) -> str:
 
 def bytecode_name(byte: int, next_byte: int = -1) -> str:
     op = (byte >> 4) & 0xf
-    arg = byte & 0xf
+    arg = byte & MAX_NIBBLE
 
-    if op & 0x8:
-        return f"[{byte:02x}] PUSH {byte & 0x7f:02x} {next_byte:02x}"
+    if byte & PUSH_OPCODE_MASK:
+        return f"[{byte:02x}] PUSH {byte & ADDR_7BIT_MASK:02x} {next_byte:02x}"
 
     match op:
         case ByteCode.OP_HALT:
@@ -233,7 +270,7 @@ def bytecode_name(byte: int, next_byte: int = -1) -> str:
                 case StackOp.STACK_AND:
                     return f"[{byte:02x}] AND"
                 case StackOp.STACK_OR:
-                    return f"[{byte:02x}] MOD"
+                    return f"[{byte:02x}] OR"
                 case StackOp.STACK_NOT:
                     return f"[{byte:02x}] NOT"
                 case StackOp.STACK_SWAP:
@@ -309,20 +346,20 @@ def dis(opcodes: bytearray, offset=0) -> str:
     while i < len(opcodes):
         byte = opcodes[i]
         op = (byte & 0xf0) >> 4
-        arg = byte & 0x0f
-        if op & ByteCode.OP_PUSH:
-            result += fmt_line(i + offset, bytecode_name(byte, opcodes[i+1]))
+        arg = byte & MAX_NIBBLE
+        if byte & PUSH_OPCODE_MASK:
+            result += fmt_line(i + offset, bytecode_name(byte, opcodes[i + 1]))
             i += 1
         else:
             match op:
                 case ByteCode.OP_JMP:
-                    if arg < 15:
+                    if arg < MAX_NIBBLE:
                         result += fmt_line(i + offset, bytecode_name(byte))
                     else:
                         i += 1
                         result += fmt_line(i + offset, bytecode_name(byte, opcodes[i]))
                 case ByteCode.OP_JZ:
-                    if arg < 15:
+                    if arg < MAX_NIBBLE:
                         result += fmt_line(i + offset, bytecode_name(byte))
                     else:
                         i += 1
@@ -425,7 +462,7 @@ class Compiler:
                         self.jump_labels.append(Label(location=location, direction=dir_vec["<"], refcount=0))
                         self.jump_labels.append(Label(location=location, direction=dir_vec[">"], refcount=1))
 
-                if len(self.jump_labels) >= 255:
+                if len(self.jump_labels) >= MAX_LABELS:
                     raise ValueError(f"Too many labels!")
 
     def comp_jump_target(self, jump_op: ByteCode, label: Label) -> list[int]:
@@ -480,11 +517,11 @@ class Compiler:
 
                 elif token.type == TokenType.T_DIGIT:
                     addr16 = x + y * self.dim.x
-                    if addr16 > 32767:
-                        raise ValueError(f"Only support 15-bit addressing. Address {addr16} too big!")
+                    if addr16 > MAX_15BIT_ADDR:
+                        raise ValueError(f"Only support {BYTE_SIZE * 2}-bit addressing. Address {addr16} too big!")
                     # High seven bits in opcode byte; low eight bits in next byte.
-                    path.append((ByteCode.OP_PUSH << 4) | ((addr16 >> 8) & 0x7f))
-                    path.append(addr16 & 0xff)
+                    path.append((ByteCode.OP_PUSH << 4) | ((addr16 >> 8) & ADDR_7BIT_MASK))
+                    path.append(addr16 & BYTE_MASK)
 
                 elif token.type == TokenType.T_STACK_OP:
                     match token.value:
@@ -558,7 +595,7 @@ class Compiler:
 
         i = 0
         while i < len(path):
-            if path[i] & 0x80:
+            if path[i] & PUSH_OPCODE_MASK:
                 # Skip over PUSH and subsequent addr byte
                 i += 2
                 continue
@@ -579,7 +616,7 @@ class Compiler:
         i = 0
         print(label_offsets)
         while i < len(code):
-            if code[i] & 0x80:
+            if code[i] & PUSH_OPCODE_MASK:
                 # Skip over PUSH and subsequent addr byte
                 i += 2
                 continue
@@ -595,7 +632,7 @@ class Compiler:
         footer = bytearray()
         for addr16 in self.mem_addrs.keys():
             value = self.mem_addrs[addr16]
-            footer.extend([(addr16 >> 8) & 0xff, addr16 & 0xff, value])
+            footer.extend([(addr16 >> 8) & BYTE_MASK, addr16 & BYTE_MASK, value])
         return footer
 
     def compile(self) -> bytes:
@@ -628,7 +665,7 @@ class Compiler:
             # scan path for next paths to follow
             i = 0
             while i < len(path):
-                if path[i] & 0x80:
+                if path[i] & PUSH_OPCODE_MASK:
                     # Skip over PUSH and subsequent addr byte
                     i += 2
                     continue
@@ -647,12 +684,12 @@ class Compiler:
         data_offset = header_len + code_len
         # memory size and offset
         mem_length = self.dim.x * self.dim.y
-        header[header_sections['mem_length']] = (mem_length >> 8) & 0xff
-        header[header_sections['mem_length'] + 1] = mem_length & 0xff
+        header[header_sections['mem_length']] = (mem_length >> 8) & BYTE_MASK
+        header[header_sections['mem_length'] + 1] = mem_length & BYTE_MASK
         header[header_sections['mem_stride']] = self.dim.x
-        header[header_sections['data_segment']] = data_offset & 0xff
+        header[header_sections['data_segment']] = data_offset & BYTE_MASK
 
-        self.resolve_entry_addresses(header, 11, label_offsets)
+        self.resolve_entry_addresses(header, ENTRY_POINTS_OFFSET, label_offsets)
 
         self.resolve_jump_addresses(code, label_offsets)
 
@@ -705,11 +742,12 @@ class VirtualMachine:
         y = proc.stack.pop()
         x = proc.stack.pop()
         value = 0
-        for i in range(8):
+        for i in range(BYTE_SIZE):
             offset = x + y * self.mem_stride
-            # TODO bounds checking
+            if offset < 0 or offset >= len(self.memory):
+                raise OutOfBoundsError(f"Memory access out of bounds at offset {offset}")
             bit = self.memory[offset]
-            value |= (bit << (7 - i))
+            value |= (bit << (HIGHEST_BIT - i))
             y += dy
             x += dx
         proc.stack.push(value)
@@ -725,11 +763,12 @@ class VirtualMachine:
         y = proc.stack.pop()
         x = proc.stack.pop()
         value = proc.stack.pop()
-        for i in range(8):
+        for i in range(BYTE_SIZE):
             offset = x + y * self.mem_stride
-            # TODO bounds checking
+            if offset < 0 or offset >= len(self.memory):
+                raise OutOfBoundsError(f"Memory access out of bounds at offset {offset}")
             # Store in memory as the parsed value. I.e., '1' -> 1.
-            self.memory[offset] = (value >> (7 - i)) & 0x1
+            self.memory[offset] = (value >> (HIGHEST_BIT - i)) & 0x1
             y += dy
             x += dx
 
@@ -741,67 +780,77 @@ class VirtualMachine:
         running_processes = [p for p in self.processes]
         while running_processes:
             for proc in running_processes:
-                self.ticks += 1
-                bytecode = self.bytecode[proc.pc]
-                op = (bytecode >> 4) & 0xf
-                arg = bytecode & 0xf
+                try:
+                    if proc.stopped:
+                        continue
 
-                # Uncomment if you want to see the play-by-play.
-                # if bytecode in jump_bytes:
-                #     print(f"[proc{proc.id}] {proc.pc:04x} {bytecode_name(bytecode, self.bytecode[proc.pc + 1])}")
-                # else:
-                #     print(f"[proc{proc.id}] {proc.pc:04x} {bytecode_name(bytecode)}")
-                if op & 0x8:
-                    # Special-case for PUSH
-                    high7 = bytecode & 0x7f
-                    low8 = self.bytecode[proc.pc + 1]
-                    addr16 = (high7 << 8) | low8
-                    proc.stack.push(self.memory[addr16])
-                    proc.pc += 1
-                else:
-                    match op:
-                        case ByteCode.OP_HALT:
-                            print(f"[proc{proc.id}] {proc.pc:04x} Halt after {self.ticks} ticks.")
-                            if not proc.stack.is_empty():
-                                print(f"[proc{proc.id}] Stack top: {proc.stack.peek()}")
-                            proc.stopped = True
-                            running_processes.remove(proc)
+                    self.ticks += 1
+                    bytecode = self.bytecode[proc.pc]
+                    op = (bytecode >> 4) & 0xf
+                    arg = bytecode & MAX_NIBBLE
 
-                        case ByteCode.OP_BYTE:
-                            if arg == 1:
-                                self._store_byte(proc)
-                            else:
-                                self._load_byte(proc)
+                    # Uncomment if you want to see the play-by-play.
+                    # if bytecode in jump_bytes:
+                    #     print(f"[proc{proc.id}] {proc.pc:04x} {bytecode_name(bytecode, self.bytecode[proc.pc + 1])}")
+                    # else:
+                    #     print(f"[proc{proc.id}] {proc.pc:04x} {bytecode_name(bytecode)}")
+                    if bytecode & PUSH_OPCODE_MASK:
+                        # Special-case for PUSH
+                        high7 = bytecode & ADDR_7BIT_MASK
+                        low8 = self.bytecode[proc.pc + 1]
+                        addr16 = (high7 << 8) | low8
+                        if addr16 < 0 or addr16 >= len(self.memory):
+                            raise OutOfBoundsError(f"Memory address {addr16} out of bounds")
+                        proc.stack.push(self.memory[addr16])
+                        proc.pc += 1
+                    else:
+                        match op:
+                            case ByteCode.OP_HALT:
+                                print(f"[proc{proc.id}] {proc.pc:04x} Halt after {self.ticks} ticks.")
+                                if not proc.stack.is_empty():
+                                    print(f"[proc{proc.id}] Stack top: {proc.stack.peek()}")
+                                proc.stopped = True
 
-                        case ByteCode.OP_STACK:
-                            proc.stack.op(arg)
+                            case ByteCode.OP_BYTE:
+                                if arg == 1:
+                                    self._store_byte(proc)
+                                else:
+                                    self._load_byte(proc)
 
-                        case ByteCode.OP_JZ:
-                            target: int
-                            if arg != 0xf:
-                                target = arg
-                            else:
-                                proc.pc += 1
-                                target = self.bytecode[proc.pc]
+                            case ByteCode.OP_STACK:
+                                proc.stack.op(arg)
 
-                            if proc.stack.pop() == 0:
+                            case ByteCode.OP_JZ:
+                                target: int
+                                if arg != MAX_NIBBLE:
+                                    target = arg
+                                else:
+                                    proc.pc += 1
+                                    target = self.bytecode[proc.pc]
+
+                                if proc.stack.pop() == 0:
+                                    proc.pc = target - 1
+
+                            case ByteCode.OP_JMP:
+                                target: int
+                                if arg != MAX_NIBBLE:
+                                    target = arg
+                                else:
+                                    proc.pc += 1
+                                    target = self.bytecode[proc.pc]
+
                                 proc.pc = target - 1
 
-                        case ByteCode.OP_JMP:
-                            target: int
-                            if arg != 0xf:
-                                target = arg
-                            else:
-                                proc.pc += 1
-                                target = self.bytecode[proc.pc]
+                            case _:
+                                raise ValueError(
+                                    f"[proc{proc.id}] Unhandled bytecode: 0x{op << 4:02x} {arg} at addr {proc.pc:02x}")
 
-                            proc.pc = target - 1
+                    proc.pc += 1
+                except VMError as e:
+                    print(f"[proc{proc.id}] {proc.pc:04x} Error: {e}")
+                    proc.stopped = True
 
-                        case _:
-                            raise ValueError(
-                                f"[proc{proc.id}] Unhandled bytecode: 0x{op << 4:02x} {arg} at addr {proc.pc:02x}")
-
-                proc.pc += 1
+            running_processes = [p for p in running_processes if not p.stopped]
         return (perf_counter() - start) * 1000
 
     def _init_mem(self, mem_length, data_offset):
@@ -820,8 +869,8 @@ class VirtualMachine:
         if self.bytecode[header_sections['version']:header_sections['version'] + 2] != self.supports_version:
             raise ValueError("Incompatible syntax version.")
 
-        mem_length = ((self.bytecode[header_sections['mem_length']] & 0xff) << 8)
-        mem_length |= ((self.bytecode[header_sections['mem_length'] + 1] & 0xff) << 8)
+        mem_length = ((self.bytecode[header_sections['mem_length']] & BYTE_MASK) << 8)
+        mem_length |= (self.bytecode[header_sections['mem_length'] + 1] & BYTE_MASK)
         self.mem_stride = self.bytecode[header_sections['mem_stride']]
         data_offset = self.bytecode[header_sections['data_segment']]
         self._init_mem(mem_length, data_offset)
