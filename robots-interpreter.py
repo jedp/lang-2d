@@ -4,6 +4,10 @@ from enum import Enum
 from time import perf_counter
 from typing import Callable
 
+BYTE_SIZE = 8
+HIGHEST_BIT = 7
+NO_BIT_OPERATION = -1
+
 
 # Custom exceptions
 class RobotError(Exception):
@@ -177,8 +181,8 @@ class Robot:
         self.get_token = get_token
         self.put_token = put_token
         self.on_result = on_result
-        self.writing_bit: int = -1
-        self.reading_bit: int = -1
+        self.writing_bit: int = NO_BIT_OPERATION
+        self.reading_bit: int = NO_BIT_OPERATION
 
     def get_position(self):
         return self.position
@@ -210,7 +214,7 @@ class Robot:
         self.stack.push(self.stack.pop() | bit)
         self.reading_bit -= 1
 
-        if self.reading_bit == -1:
+        if self.reading_bit == NO_BIT_OPERATION:
             self.unjump()
 
     def write_next_bit(self):
@@ -218,17 +222,17 @@ class Robot:
         self.put_token(self.position, Token(TokenType.T_DIGIT, str(bit)))
         self.writing_bit -= 1
 
-        if self.writing_bit == -1:
+        if self.writing_bit == NO_BIT_OPERATION:
             self.stack.pop()
             self.unjump()
 
     def next(self) -> None:
         token = self.get_token(self.position)
 
-        if self.writing_bit > -1:
+        if self.writing_bit > NO_BIT_OPERATION:
             self.write_next_bit()
 
-        elif self.reading_bit > -1:
+        elif self.reading_bit > NO_BIT_OPERATION:
             self.read_next_bit(token)
 
         else:
@@ -249,12 +253,12 @@ class Robot:
                     else:
                         self.direction = dir_vec['<']
                 case TokenType.T_READ_BYTE:
-                    self.reading_bit = 7
+                    self.reading_bit = HIGHEST_BIT
                     self.jump()
                     self.stack.push(0)  # Push a byte to start adding bits to.
                     return  # jump updates location and direction.
                 case TokenType.T_WRITE_BYTE:
-                    self.writing_bit = 7
+                    self.writing_bit = HIGHEST_BIT
                     self.jump()
                     return  # jump updates location and direction.
                 case TokenType.T_DIGIT:
