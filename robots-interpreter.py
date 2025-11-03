@@ -299,10 +299,11 @@ class Room:
     def _receive_result(self, result: Result) -> None:
         for robot in self.robots:
             if robot.id == result.id:
-                self.robots.remove(robot)
+                robot.running = False
                 print(f"Robot {robot.id} exited. Grid now:")
                 self._print_grid()
                 print(f"Received {result.value} from robot {robot.id}.")
+                break
 
     def _place_robots(self) -> None:
         for position, direction in self.start_positions:
@@ -346,10 +347,12 @@ class Room:
         while self.robots:
             for robot in self.robots:
                 try:
-                    robot.next()
+                    if robot.running:
+                        robot.next()
                 except RobotError as e:
                     print(f"Robot {robot.id} encountered an error: {e}")
-                    self.robots.remove(robot)
+                    robot.running = False
+            self.robots = [robot for robot in self.robots if robot.running]
         return (perf_counter() - start) * 1000
 
 
