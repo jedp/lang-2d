@@ -5,6 +5,23 @@ from time import perf_counter
 from typing import Callable
 
 
+# Custom exceptions
+class RobotError(Exception):
+    pass
+
+
+class OutOfBoundsError(RobotError):
+    pass
+
+
+class StackUnderflowError(RobotError):
+    pass
+
+
+class DivisionByZeroError(RobotError):
+    pass
+
+
 class TokenType(Enum):
     T_NOP = 0
     T_HALT = 1
@@ -46,7 +63,7 @@ def lex_char(ch: str) -> Token:
     elif ch == '#':
         token_type = TokenType.T_WRITE_BYTE
     else:
-        raise ValueError(f"Cannot parse token: '{ch}")
+        raise ValueError(f"Cannot parse token: '{ch}'")
 
     return Token(token_type, ch)
 
@@ -95,14 +112,18 @@ class Stack:
         self.stack.append(val)
 
     def pop(self) -> int:
+        if self.is_empty():
+            raise StackUnderflowError("Stack is empty")
         return self.stack.pop()
 
     def peek(self) -> int:
+        if self.is_empty():
+            raise StackUnderflowError("Stack is empty")
         return self.stack[-1]
 
     def math(self, op: str) -> None:
-        a = self.stack.pop()
-        b = self.stack.pop()
+        a = self.pop()
+        b = self.pop()
         match op:
             case '-':
                 self.push(b - a)
@@ -111,8 +132,12 @@ class Stack:
             case '*':
                 self.push(b * a)
             case '/':
+                if a == 0:
+                    raise DivisionByZeroError("Cannot divide by zero")
                 self.push(b // a)
             case '%':
+                if a == 0:
+                    raise DivisionByZeroError("Cannot divide by zero")
                 self.push(b % a)
             case _:
                 raise ValueError(f"Unhandled stack op: '{op}'")
@@ -291,9 +316,17 @@ class Room:
             print(f"Inserted robot {robot.id} at {robot.position}, direction {robot.direction}")
 
     def _get_token(self, pos: Vector) -> Token:
+        if pos.y < 0 or pos.y >= len(self.grid):
+            raise OutOfBoundsError(f"Position {pos} is out of bounds (y-axis)")
+        if pos.x < 0 or pos.x >= len(self.grid[pos.y]):
+            raise OutOfBoundsError(f"Position {pos} is out of bounds (x-axis)")
         return self.grid[pos.y][pos.x]
 
     def _put_token(self, pos: Vector, token: Token) -> None:
+        if pos.y < 0 or pos.y >= len(self.grid):
+            raise OutOfBoundsError(f"Position {pos} is out of bounds (y-axis)")
+        if pos.x < 0 or pos.x >= len(self.grid[pos.y]):
+            raise OutOfBoundsError(f"Position {pos} is out of bounds (x-axis)")
         match token.type:
             case TokenType.T_DIGIT:
                 self.grid[pos.y][pos.x] = token
@@ -312,7 +345,11 @@ class Room:
         start = perf_counter()
         while self.robots:
             for robot in self.robots:
-                robot.next()
+                try:
+                    robot.next()
+                except RobotError as e:
+                    print(f"Robot {robot.id} encountered an error: {e}")
+                    self.robots.remove(robot)
         return (perf_counter() - start) * 1000
 
 
